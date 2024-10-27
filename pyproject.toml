@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "spurious-correlations"
+version = "0.1.0"
+description = ""
+authors = ["turquenite <dominik.karasin@outlook.de>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+numpy = "^2.1.2"
+matplotlib = "^3.9.2"
+ipykernel = "^6.29.5"
+torch = {version = "*", source = "pytorch"}
+torchvision = {version = "*", source = "pytorch"}
+torchaudio = {version = "*", source = "pytorch"}
+seaborn = "^0.13.2"
+pandas = "^2.2.3"
+isort = "^5.13.2"
+pre-commit = "^4.0.1"
+
+[[tool.poetry.source]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu124"
+priority = "explicit"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
