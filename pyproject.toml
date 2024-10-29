@@ -4,9 +4,10 @@ version = "0.1.0"
 description = ""
 authors = ["turquenite <dominik.karasin@outlook.de>"]
 readme = "README.md"
+package-mode = false
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = ">=3.10,<3.13"
 numpy = "^2.1.2"
 matplotlib = "^3.9.2"
 ipykernel = "^6.29.5"
