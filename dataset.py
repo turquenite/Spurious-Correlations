@@ -61,7 +61,14 @@ class MNISTDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
-        return self.data[idx]
+        data, label = self.data[idx]
+        return (
+            data,
+            label,
+            True
+            if label in self.spurious_indices and idx in self.spurious_indices[label]
+            else False,
+        )
 
     def view_item(self, idx):
         image, label = self.data[idx]
