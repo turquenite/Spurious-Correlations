@@ -1,32 +1,34 @@
+"""This file serves as a playground for experimenting with various classes and models in the machine learning pipeline."""
+
 from torch.utils.data import DataLoader
 
 from dataset import MNISTDataset
-from spurious_features import Orientation, spurious_lines
+from model_trainer import train
+from models import SimpleModel
+from spurious_features import Position, spurious_square
 
 if __name__ == "__main__":
-    # Create instances for training and testing datasets
     train_dataset = MNISTDataset(
         train=True,
         labels=[9, 7],
         spurious_features={
             9: [
-                lambda img: spurious_lines(
-                    img, orientation=Orientation.VERTICAL, distance=7
-                ),
-                1,
+                lambda img: spurious_square(img, pos=Position.LEFT_TOP, size=4),
+                0.8,
             ]
         },
     )
-    test_dataset = MNISTDataset(train=False, labels=[0, 7])
+    validation_dataset = MNISTDataset(train=False, labels=[9, 7])
 
     # Create data loaders
     train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
+    validation_loader = DataLoader(validation_dataset, batch_size=64, shuffle=False)
 
-    # Test iterating over a batch
-    for images, labels in train_loader:
-        print(f"Batch of images has shape: {images.shape}")
-        print(f"Batch of labels has shape: {labels.shape}")
-        break
+    model = SimpleModel(num_classes=2)
 
-    train_dataset.view_item(3)
+    train(
+        model=model,
+        validation_loader=validation_loader,
+        train_loader=train_loader,
+        num_epochs=10,
+    )
