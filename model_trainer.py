@@ -35,7 +35,7 @@ def train(
 
     optimizer = optimizer_type(model.parameters(), lr)
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = "cuda" if False else "cpu"
     model = model.to(device)
 
     best_vloss = 1_000_000.0
@@ -109,7 +109,8 @@ def _train_one_epoch(
 ):
     running_loss = 0.0
     last_loss = 0.0
-    N = 100
+
+    N = len(train_loader) // 2 - 1
 
     for i, data in enumerate(train_loader):
         # Every data instance is an input + label pair
