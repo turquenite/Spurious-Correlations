@@ -1,6 +1,8 @@
+import os
 from datetime import datetime
 
 import torch
+import torchvision
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
@@ -14,9 +16,8 @@ def train(
     lr=0.001,
     loss_function=torch.nn.CrossEntropyLoss(),
 ):
-    # Initializing in a separate cell so we can easily add more epochs to the same run
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    writer = SummaryWriter("runs/fashion_trainer_{}".format(timestamp))
+    writer = SummaryWriter("runs/spurious_trainer_{}".format(timestamp))
     epoch_number = 0
 
     optimizer = optimizer_type(model.parameters(), lr)
@@ -25,6 +26,14 @@ def train(
     model = model.to(device)
 
     best_vloss = 1_000_000.0
+
+    # Add sample plots in Tensorboard
+    example_batch = iter(train_loader)
+    example_plots, example_true_label, _, _ = next(example_batch)
+
+    img_grid = torchvision.utils.make_grid(example_plots)
+
+    writer.add_image("MNIST Samples", img_grid)
 
     for epoch in range(num_epochs):
         print("EPOCH {}:".format(epoch_number + 1))
@@ -52,9 +61,9 @@ def train(
                 )
                 voutputs = model(vinputs)
                 vloss = loss_function(voutputs, vencoded_labels)
-                running_vloss += vloss
+                running_vloss += vloss.item()
 
-        avg_vloss = running_vloss / (i + 1)
+        avg_vloss = float(running_vloss / (i + 1))
         print("LOSS train {} valid {}".format(avg_loss, avg_vloss))
 
         # Log the running loss averaged per batch
@@ -69,6 +78,7 @@ def train(
         # Track best performance, and save the model's state
         if avg_vloss < best_vloss:
             best_vloss = avg_vloss
+            os.makedirs("models", exist_ok=True)
             model_path = r"models\model_{}_{}".format(timestamp, epoch_number)
             torch.save(model.state_dict(), model_path)
 
@@ -86,6 +96,7 @@ def train_one_epoch(
 ):
     running_loss = 0.0
     last_loss = 0.0
+    N = 100
 
     for i, data in enumerate(train_loader):
         # Every data instance is an input + label pair
@@ -113,8 +124,9 @@ def train_one_epoch(
 
         # Gather data and report
         running_loss += loss.item()
-        if i % 1000 == 999:
-            last_loss = running_loss / 1000  # loss per batch
+
+        if i % N == N - 1:
+            last_loss = running_loss / N
             print("  batch {} loss: {}".format(i + 1, last_loss))
             tb_x = epoch_index * len(train_loader) + i + 1
             tb_writer.add_scalar("Loss/train", last_loss, tb_x)
