@@ -31,6 +31,7 @@ class MNISTDataset(Dataset):
         )
 
         if labels:
+            self.label_encoding = {label: idx for idx, label in enumerate(labels)}
             indices = [
                 i for i, (_, label) in enumerate(full_dataset) if label in labels
             ]
@@ -38,6 +39,9 @@ class MNISTDataset(Dataset):
             data = [(img, label) for img, label in data_subset]
 
         else:
+            self.label_encoding = {
+                label: idx for idx, label in enumerate([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+            }
             data = [(img, label) for img, label in full_dataset]
 
         if spurious_features:
@@ -61,12 +65,15 @@ class MNISTDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
-        data, label = self.data[idx]
+        data, true_label = self.data[idx]
+        encoded_label = self.label_encoding[true_label]
         return (
             data,
-            label,
+            true_label,
+            encoded_label,
             True
-            if label in self.spurious_indices and idx in self.spurious_indices[label]
+            if true_label in self.spurious_indices
+            and idx in self.spurious_indices[true_label]
             else False,
         )
 
