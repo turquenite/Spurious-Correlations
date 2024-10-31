@@ -1,3 +1,5 @@
+"""This file contains a ML train loop for the MNIST-number dataset."""
+
 import os
 from datetime import datetime
 
@@ -8,14 +10,25 @@ from torch.utils.tensorboard import SummaryWriter
 
 
 def train(
-    num_epochs,
+    num_epochs: int,
     model: torch.nn.Module,
     validation_loader: DataLoader,
     train_loader: DataLoader,
     optimizer_type=torch.optim.Adam,
-    lr=0.001,
+    lr: float = 0.001,
     loss_function=torch.nn.CrossEntropyLoss(),
 ):
+    """Trains given model for num_epochs.
+
+    Args:
+        num_epochs (int): Number of epochs.
+        model (torch.nn.Module): Model architecture.
+        validation_loader (DataLoader): DataLoader for validation set.
+        train_loader (DataLoader): DataLoader for train set.
+        optimizer_type (_type_, optional): Optimizer used during training. Defaults to torch.optim.Adam.
+        lr (float, optional): Learning rate for the optimizer. Defaults to 0.001.
+        loss_function (_type_, optional): Loss function. Defaults to torch.nn.CrossEntropyLoss().
+    """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     writer = SummaryWriter("runs/spurious_trainer_{}".format(timestamp))
     epoch_number = 0
@@ -35,12 +48,12 @@ def train(
 
     writer.add_image("MNIST Samples", img_grid)
 
-    for epoch in range(num_epochs):
+    for _ in range(num_epochs):
         print("EPOCH {}:".format(epoch_number + 1))
 
         # Make sure gradient tracking is on, and do a pass over the data
         model.train(True)
-        avg_loss = train_one_epoch(
+        avg_loss = _train_one_epoch(
             epoch_number, writer, model, train_loader, loss_function, optimizer, device
         )
 
@@ -85,9 +98,9 @@ def train(
         epoch_number += 1
 
 
-def train_one_epoch(
-    epoch_index,
-    tb_writer,
+def _train_one_epoch(
+    current_epoch: int,
+    tb_writer: SummaryWriter,
     model: torch.nn.Module,
     train_loader: DataLoader,
     loss_function,
@@ -128,7 +141,7 @@ def train_one_epoch(
         if i % N == N - 1:
             last_loss = running_loss / N
             print("  batch {} loss: {}".format(i + 1, last_loss))
-            tb_x = epoch_index * len(train_loader) + i + 1
+            tb_x = current_epoch * len(train_loader) + i + 1
             tb_writer.add_scalar("Loss/train", last_loss, tb_x)
             running_loss = 0.0
 
