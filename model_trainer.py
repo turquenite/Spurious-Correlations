@@ -1,6 +1,7 @@
 """This file contains a ML train loop for the MNIST-number dataset."""
 
 import os
+from collections import defaultdict
 from datetime import datetime
 
 import torch
@@ -53,13 +54,13 @@ def train(
 
         # Train Mode
         model.train(True)
-        avg_loss, avg_accuracy = _train_one_epoch(
+        avg_loss, avg_accuracy, avg_worst_group_accuracy = _train_one_epoch(
             epoch_number, writer, model, train_loader, loss_function, optimizer, device
         )
 
         running_vloss = 0.0
-        num_predictions = 0
-        num_correct_predictions = 0
+        num_predictions = defaultdict(int)
+        num_correct_predictions = defaultdict(int)
 
         # Evaluation Mode
         model.eval()
@@ -79,17 +80,37 @@ def train(
                 running_vloss += vloss.item()
 
                 _, predicted_labels = torch.max(voutputs, 1)
-                num_correct_predictions += (
-                    (predicted_labels == vencoded_labels).sum().item()
-                )
-                num_predictions += vencoded_labels.size(0)
+
+                for pred, encoded_label, true_label, spur in zip(
+                    predicted_labels, vencoded_labels, vtrue_labels, vspurious
+                ):
+                    key = f"{true_label} - {'spurious' if spur else 'not spurious'}"
+
+                    if pred.item() == encoded_label.item():
+                        num_correct_predictions[key] += 1
+
+                    num_predictions[key] += 1
 
         avg_vloss = float(running_vloss / (i + 1))
-        avg_vaccuracy = num_correct_predictions / num_predictions
+        group_vaccuracies = {
+            group: num_correct_predictions[group] / num_predictions[group]
+            for group in num_predictions
+        }
+        avg_worst_group_vaccuracy = min(group_vaccuracies.values())
+
+        total_correct = sum(num_correct_predictions.values())
+        total_predictions = sum(num_predictions.values())
+        avg_vaccuracy = (
+            total_correct / total_predictions if total_predictions > 0 else 0
+        )
 
         print(
-            "LOSS train {} valid {} | ACCURACY train {} valid {}".format(
-                avg_loss, avg_vloss, avg_accuracy, avg_vaccuracy
+            "LOSS train {} valid {} | ACCURACY train {} valid {} | WORST GROUP ACCURACY {}".format(
+                avg_loss,
+                avg_vloss,
+                avg_accuracy,
+                avg_vaccuracy,
+                avg_worst_group_vaccuracy,
             )
         )
 
@@ -105,6 +126,18 @@ def train(
             {"Training": avg_accuracy, "Validation": avg_vaccuracy},
             epoch_number + 1,
         )
+
+        writer.add_scalars(
+            "Worst Group Accuracy",
+            {
+                "Training": avg_worst_group_accuracy,
+                "Validation": avg_worst_group_vaccuracy,
+            },
+            epoch_number + 1,
+        )
+
+        for group, accuracy in group_vaccuracies.items():
+            writer.add_scalar(f"Accuracy/{group}/valid", accuracy, epoch_number + 1)
 
         writer.flush()
 
@@ -129,8 +162,8 @@ def _train_one_epoch(
 ):
     running_loss = 0.0
     last_loss = 0.0
-    num_predictions = 0
-    num_correct_predictions = 0
+    num_predictions = defaultdict(int)
+    num_correct_predictions = defaultdict(int)
 
     N = len(train_loader) // 2 - 1
 
@@ -154,8 +187,15 @@ def _train_one_epoch(
         # Fetch predicted labels for computing accuracy labels later
         _, predicted_labels = torch.max(outputs, 1)
 
-        num_correct_predictions += (predicted_labels == encoded_labels).sum().item()
-        num_predictions += encoded_labels.size(0)
+        for pred, encoded_label, true_label, spur in zip(
+            predicted_labels, encoded_labels, true_labels, spurious
+        ):
+            key = f"{true_label} - {'spurious' if spur else 'not spurious'}"
+
+            if pred.item() == encoded_label.item():
+                num_correct_predictions[key] += 1
+
+            num_predictions[key] += 1
 
         # Compute the loss and its gradients
         loss = loss_function(outputs, encoded_labels)
@@ -169,16 +209,51 @@ def _train_one_epoch(
 
         if i % N == N - 1:
             last_loss = running_loss / N
-            accuracy = num_correct_predictions / num_predictions
 
-            print("  batch {} loss: {} accuracy: {}".format(i + 1, last_loss, accuracy))
+            group_accuracies = {
+                group: num_correct_predictions[group] / num_predictions[group]
+                for group in num_predictions
+            }
+            worst_group_accuracy = min(group_accuracies.values())
+
+            total_correct = sum(num_correct_predictions.values())
+            total_predictions = sum(num_predictions.values())
+            overall_accuracy = (
+                total_correct / total_predictions if total_predictions > 0 else 0
+            )
+
+            print(
+                "  batch {} loss: {} accuracy: {} worst group accuracy".format(
+                    i + 1,
+                    last_loss,
+                    overall_accuracy,
+                )
+            )
 
             tb_x = current_epoch * len(train_loader) + i + 1
             tb_writer.add_scalar("Loss/train", last_loss, tb_x)
-            tb_writer.add_scalar("Accuracy/train", accuracy, tb_x)
+
+            tb_writer.add_scalar("Accuracy/train", overall_accuracy, tb_x)
+
+            for group, accuracy in group_accuracies.items():
+                tb_writer.add_scalar(f"Accuracy/{group}/train", accuracy, tb_x)
+
+            tb_writer.add_scalar(
+                "Accuracy/worst_group/train", worst_group_accuracy, tb_x
+            )
 
             running_loss = 0.0
 
     avg_loss = running_loss / len(train_loader)
-    avg_accuracy = num_correct_predictions / num_predictions
-    return avg_loss, avg_accuracy
+
+    group_accuracies = {
+        group: num_correct_predictions[group] / num_predictions[group]
+        for group in num_predictions
+    }
+    worst_group_accuracy = min(group_accuracies.values())
+
+    total_correct = sum(num_correct_predictions.values())
+    total_predictions = sum(num_predictions.values())
+    overall_accuracy = total_correct / total_predictions if total_predictions > 0 else 0
+
+    return avg_loss, overall_accuracy, worst_group_accuracy
