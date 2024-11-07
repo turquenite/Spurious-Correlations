@@ -76,14 +76,21 @@ def spurious_lines(
         torch.tensor: Image with embedded spurious lines.
     """
     _, height, width = image.shape
+
+    digit_mask = (image > 0).int()
+
     match orientation:
         case Orientation.VERTICAL:
             for x in range(0, width, distance):
-                image[0, :, x] = 1
+                image[0, :, x] = torch.where(
+                    digit_mask[0, :, x] == 0, 1, image[0, :, x]
+                )
 
         case Orientation.HORIZONTAL:
             for y in range(0, height, distance):
-                image[0, y, :] = 1
+                image[0, y, :] = torch.where(
+                    digit_mask[0, y, :] == 0, 1, image[0, y, :]
+                )
 
         case _:
             raise ValueError("Invalid Orientation")
