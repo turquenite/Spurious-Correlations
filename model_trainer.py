@@ -56,7 +56,7 @@ def train(
 
     img_grid = torchvision.utils.make_grid(example_plots)
 
-    writer.add_image("MNIST Samples", img_grid)
+    writer.add_image("Samples/MNIST", img_grid)
 
     for epoch_number in tqdm(range(num_epochs), desc="Epochs"):
         # Train Mode
@@ -123,28 +123,30 @@ def train(
 
         # Log metrics to TensorBoard
         writer.add_scalars(
-            "Training vs. Validation Loss",
+            "Loss/Epoch",
             {"Training": avg_loss, "Validation": avg_vloss},
             epoch_number + 1,
         )
 
         writer.add_scalars(
-            "Accuracy",
+            "Accuracy/Epoch",
             {"Training": avg_accuracy, "Validation": avg_vaccuracy},
             epoch_number + 1,
         )
 
         writer.add_scalars(
-            "Worst Group Accuracy",
+            "Accuracy/Worst Group",
             {
-                "Training": avg_worst_group_accuracy,
-                "Validation": avg_worst_group_vaccuracy,
+                "Training Worst Group": avg_worst_group_accuracy,
+                "Validation Worst Group": avg_worst_group_vaccuracy,
             },
             epoch_number + 1,
         )
 
         for group, accuracy in group_vaccuracies.items():
-            writer.add_scalar(f"Accuracy/{group}/valid", accuracy, epoch_number + 1)
+            writer.add_scalar(
+                f"Group Accuracy/Validation/{group}", accuracy, epoch_number + 1
+            )
 
         writer.flush()
 
@@ -152,7 +154,7 @@ def train(
         if avg_vloss < best_vloss:
             best_vloss = avg_vloss
             os.makedirs("models", exist_ok=True)
-            model_path = r"models\model_{}_{}".format(timestamp, epoch_number)
+            model_path = f"models/model_{timestamp}_{epoch_number}.pt"
             torch.save(model.state_dict(), model_path)
 
     return model_path, tensorboard_log_dir_path
@@ -234,16 +236,17 @@ def _train_one_epoch(
             )
 
             tb_x = current_epoch * len(train_loader) + i + 1
-            tb_writer.add_scalar("Loss/train", last_loss, tb_x)
 
-            tb_writer.add_scalar("Accuracy/train", overall_accuracy, tb_x)
+            tb_writer.add_scalar("Loss/Batch Training Loss", last_loss, tb_x)
+            tb_writer.add_scalar(
+                "Accuracy/Overall Training Accuracy", overall_accuracy, tb_x
+            )
+            tb_writer.add_scalar(
+                "Accuracy/Worst Group Training Accuracy", worst_group_accuracy, tb_x
+            )
 
             for group, accuracy in group_accuracies.items():
-                tb_writer.add_scalar(f"Accuracy/{group}/train", accuracy, tb_x)
-
-            tb_writer.add_scalar(
-                "Accuracy/worst_group/train", worst_group_accuracy, tb_x
-            )
+                tb_writer.add_scalar(f"Accuracy/Training/{group}", accuracy, tb_x)
 
             running_loss = 0.0
 
