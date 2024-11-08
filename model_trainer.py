@@ -1,5 +1,6 @@
 """This file contains a ML train loop for the MNIST-number dataset."""
 
+import math
 import os
 from collections import defaultdict
 from datetime import datetime
@@ -8,6 +9,7 @@ import torch
 import torchvision
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
 
 
 def train(
@@ -32,14 +34,13 @@ def train(
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     writer = SummaryWriter("runs/spurious_trainer_{}".format(timestamp))
-    epoch_number = 0
 
     optimizer = optimizer_type(model.parameters(), lr)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = model.to(device)
 
-    best_vloss = 1_000_000.0
+    best_vloss = math.inf
 
     # Add sample plots in Tensorboard
     example_batch = iter(train_loader)
@@ -49,9 +50,7 @@ def train(
 
     writer.add_image("MNIST Samples", img_grid)
 
-    for _ in range(num_epochs):
-        print("EPOCH {}:".format(epoch_number + 1))
-
+    for epoch_number in tqdm(range(num_epochs), desc="Epochs"):
         # Train Mode
         model.train(True)
         avg_loss, avg_accuracy, avg_worst_group_accuracy = _train_one_epoch(
@@ -104,8 +103,8 @@ def train(
             total_correct / total_predictions if total_predictions > 0 else 0
         )
 
-        print(
-            "LOSS train {} valid {} | ACCURACY train {} valid {} | WORST GROUP ACCURACY {}".format(
+        tqdm.write(
+            "LOSS train {:.4f} valid {:.4f} | ACCURACY train {:.4f} valid {:.4f} | WORST GROUP ACCURACY {:.4f}".format(
                 avg_loss,
                 avg_vloss,
                 avg_accuracy,
@@ -114,7 +113,7 @@ def train(
             )
         )
 
-        # Log the running loss and accuracy averaged per batch
+        # Log metrics to TensorBoard
         writer.add_scalars(
             "Training vs. Validation Loss",
             {"Training": avg_loss, "Validation": avg_vloss},
@@ -141,14 +140,12 @@ def train(
 
         writer.flush()
 
-        # Track best performance, and save the model's state
+        # Save best model
         if avg_vloss < best_vloss:
             best_vloss = avg_vloss
             os.makedirs("models", exist_ok=True)
             model_path = r"models\model_{}_{}".format(timestamp, epoch_number)
             torch.save(model.state_dict(), model_path)
-
-        epoch_number += 1
 
 
 def _train_one_epoch(
@@ -167,8 +164,7 @@ def _train_one_epoch(
 
     N = len(train_loader) // 2 - 1
 
-    for i, data in enumerate(train_loader):
-        # Every data instance is an input + label pair
+    for i, data in enumerate(tqdm(train_loader, desc="Training Batches", leave=False)):
         inputs, true_labels, encoded_labels, spurious = data
 
         inputs, true_labels, encoded_labels, spurious = (
@@ -218,16 +214,13 @@ def _train_one_epoch(
 
             total_correct = sum(num_correct_predictions.values())
             total_predictions = sum(num_predictions.values())
+
             overall_accuracy = (
                 total_correct / total_predictions if total_predictions > 0 else 0
             )
 
-            print(
-                "  batch {} loss: {} accuracy: {} worst group accuracy".format(
-                    i + 1,
-                    last_loss,
-                    overall_accuracy,
-                )
+            tqdm.write(
+                f"Batch {i + 1} | Loss: {last_loss:.4f} | Accuracy: {overall_accuracy:.4f} | Worst Group Accuracy: {worst_group_accuracy:.4f}"
             )
 
             tb_x = current_epoch * len(train_loader) + i + 1
@@ -250,6 +243,7 @@ def _train_one_epoch(
         group: num_correct_predictions[group] / num_predictions[group]
         for group in num_predictions
     }
+
     worst_group_accuracy = min(group_accuracies.values())
 
     total_correct = sum(num_correct_predictions.values())
