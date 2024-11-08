@@ -15,7 +15,8 @@ class MNISTDataset(Dataset):
         self,
         train: bool = True,
         labels: None | list[int] = None,
-        spurious_features: None | dict[int : list[callable, float]] = None,
+        spurious_features: None | dict[int, callable] = None,
+        probabilities: None | dict[int, float] = None,
         random_seed: int = None,
     ):
         """Download the MNIST Dataset (if not already downloaded). Filters for given labels and applies given spurious features.
@@ -23,8 +24,12 @@ class MNISTDataset(Dataset):
         Args:
             train (bool, optional): True if this Dataset is used for training, else False. Defaults to True.
             labels (None | list[int], optional): Labels that should be used in the dataset. Should be a list of integers (corresponding labels are then used) or None (all labels are used). Defaults to None.
-            spurious_features (_type_, optional): Contains all spurious functions that should be applied to specific labels (key in dictionary). The dictionary should contain a function(callable) and a probability(float) for each key. The spurious function will be applied to all examples of the corresponding label with the corresponding probability. Defaults to None.
+            spurious_features (None | dict[int, callable], optional): Contains all spurious functions that should be applied to a given label (key in dictionary). Defaults to None.
+            probabilities (None | dict[int, float], optional): Contains the probabilities with which all specified spurious functions are applied to the corresponding label. Defaults to None.
             random_seed (int, optional): Seed for random initialization. Defaults to None.
+
+        Raises:
+            ValueError: If a specified spurious function has no corresponding probability.
         """
         self.train = train
         self.spurious_features = spurious_features
@@ -57,14 +62,22 @@ class MNISTDataset(Dataset):
             data = [(img, label) for img, label in full_dataset]
 
         if spurious_features:
+            missing_keys = set(spurious_features.keys()) - set(probabilities.keys())
+
+            if missing_keys:
+                raise ValueError(
+                    f"The probabilities for the following keys are missing {missing_keys}."
+                )
+
             for spurious_label in spurious_features:
-                spurious_function, probability = spurious_features[spurious_label]
+                spurious_function = spurious_features[spurious_label]
+                probability = probabilities[spurious_label]
                 indices = [
                     i for i, (_, label) in enumerate(data) if label == spurious_label
                 ]
 
                 num_choices = int(len(indices) * probability)
-                selected_indices = random.choices(indices, k=num_choices)
+                selected_indices = random.sample(indices, k=num_choices)
 
                 self.spurious_indices[spurious_label] = selected_indices
 
