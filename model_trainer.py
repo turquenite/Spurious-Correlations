@@ -20,7 +20,7 @@ def train(
     optimizer_type=torch.optim.Adam,
     lr: float = 0.001,
     loss_function=torch.nn.CrossEntropyLoss(),
-):
+) -> tuple[str, str]:
     """Trains given model for num_epochs.
 
     Args:
@@ -31,9 +31,16 @@ def train(
         optimizer_type (_type_, optional): Optimizer used during training. Defaults to torch.optim.Adam.
         lr (float, optional): Learning rate for the optimizer. Defaults to 0.001.
         loss_function (_type_, optional): Loss function. Defaults to torch.nn.CrossEntropyLoss().
+
+    Returns:
+        tuple: (str, str) containing:
+            - Path to the saved model with the best validation loss.
+            - Path to the TensorBoard log directory.
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    writer = SummaryWriter("runs/spurious_trainer_{}".format(timestamp))
+
+    tensorboard_log_dir_path = f"runs/spurious_trainer_{timestamp}"
+    writer = SummaryWriter(tensorboard_log_dir_path)
 
     optimizer = optimizer_type(model.parameters(), lr)
 
@@ -41,6 +48,7 @@ def train(
     model = model.to(device)
 
     best_vloss = math.inf
+    model_path = None
 
     # Add sample plots in Tensorboard
     example_batch = iter(train_loader)
@@ -146,6 +154,8 @@ def train(
             os.makedirs("models", exist_ok=True)
             model_path = r"models\model_{}_{}".format(timestamp, epoch_number)
             torch.save(model.state_dict(), model_path)
+
+    return model_path, tensorboard_log_dir_path
 
 
 def _train_one_epoch(
