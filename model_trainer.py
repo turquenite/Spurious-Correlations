@@ -264,3 +264,155 @@ def _train_one_epoch(
     overall_accuracy = total_correct / total_predictions if total_predictions > 0 else 0
 
     return avg_loss, overall_accuracy, worst_group_accuracy
+
+
+def deep_feature_reweighting(
+    path_to_model: str,
+    path_to_tensorboard_run: str,
+    num_epochs: int,
+    model: torch.nn.Module,
+    validation_loader: DataLoader,
+    train_loader: DataLoader,
+    optimizer_type=torch.optim.Adam,
+    lr: float = 0.001,
+    loss_function=torch.nn.CrossEntropyLoss(),
+) -> tuple[str, str]:
+    """Apply DFR to an already pretrained model by retraining the last layer.
+
+    Args:
+        path_to_model (str): Path to the pre-trained model (state dict).
+        path_to_tensorboard_run (str): Path to TensorBoard run.
+        num_epochs (int): Number of epochs.
+        model (torch.nn.Module): Model architecture.
+        validation_loader (DataLoader): DataLoader for validation set.
+        train_loader (DataLoader): DataLoader for train set.
+        optimizer_type (_type_, optional): Optimizer used during training. Defaults to torch.optim.Adam.
+        lr (float, optional): Learning rate for the optimizer. Defaults to 0.001.
+        loss_function (_type_, optional): Loss function. Defaults to torch.nn.CrossEntropyLoss().
+
+    Returns:
+        tuple: (str, str) containing:
+            - Path to the best retrained model.
+            - Path to the TensorBoard log directory.
+    """
+    # Load pre-trained model state
+    model.load_state_dict(torch.load(path_to_model, weights_only=True))
+    model.eval()
+
+    # Freeze all layers
+    for param in model.parameters():
+        param.requires_grad = False
+
+    # Unfreeze the last fully connected layer
+    last_layer = list(model.children())[-1]
+    for param in last_layer.parameters():
+        param.requires_grad = True
+
+    # Define the optimizer with only the last layers parameters
+    optimizer = optimizer_type(
+        filter(lambda p: p.requires_grad, model.parameters()), lr
+    )
+
+    writer = SummaryWriter(path_to_tensorboard_run)
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = model.to(device)
+
+    best_vloss = math.inf
+    model_path = None
+
+    for epoch_number in tqdm(range(num_epochs), desc="Reweighting Epochs"):
+        model.train()
+
+        # Train only the last layer
+        avg_loss, avg_accuracy, avg_worst_group_accuracy = _train_one_epoch(
+            epoch_number, writer, model, train_loader, loss_function, optimizer, device
+        )
+
+        running_vloss = 0.0
+        num_predictions = defaultdict(int)
+        num_correct_predictions = defaultdict(int)
+
+        model.eval()
+
+        with torch.no_grad():
+            for i, vdata in enumerate(validation_loader):
+                vinputs, vtrue_labels, vencoded_labels, vspurious = vdata
+                vinputs, vtrue_labels, vencoded_labels, vspurious = (
+                    vinputs.to(device),
+                    vtrue_labels.to(device),
+                    vencoded_labels.to(device),
+                    vspurious.to(device),
+                )
+                voutputs = model(vinputs)
+                vloss = loss_function(voutputs, vencoded_labels)
+                running_vloss += vloss.item()
+
+                _, predicted_labels = torch.max(voutputs, 1)
+
+                for pred, encoded_label, true_label, spur in zip(
+                    predicted_labels, vencoded_labels, vtrue_labels, vspurious
+                ):
+                    key = f"{true_label} - {'spurious' if spur else 'not spurious'}"
+                    if pred.item() == encoded_label.item():
+                        num_correct_predictions[key] += 1
+                    num_predictions[key] += 1
+
+        avg_vloss = float(running_vloss / (i + 1))
+        group_vaccuracies = {
+            group: num_correct_predictions[group] / num_predictions[group]
+            for group in num_predictions
+        }
+        avg_worst_group_vaccuracy = min(group_vaccuracies.values())
+
+        total_correct = sum(num_correct_predictions.values())
+        total_predictions = sum(num_predictions.values())
+        avg_vaccuracy = (
+            total_correct / total_predictions if total_predictions > 0 else 0
+        )
+
+        tqdm.write(
+            "LOSS train {:.4f} valid {:.4f} | ACCURACY train {:.4f} valid {:.4f} | WORST GROUP ACCURACY {:.4f}".format(
+                avg_loss,
+                avg_vloss,
+                avg_accuracy,
+                avg_vaccuracy,
+                avg_worst_group_vaccuracy,
+            )
+        )
+
+        # Log to TensorBoard
+        writer.add_scalars(
+            "DFR/Loss/Epoch",
+            {"Training": avg_loss, "Validation": avg_vloss},
+            epoch_number + 1,
+        )
+        writer.add_scalars(
+            "DFR/Accuracy/Epoch",
+            {"Training": avg_accuracy, "Validation": avg_vaccuracy},
+            epoch_number + 1,
+        )
+        writer.add_scalars(
+            "DFR/Accuracy/Worst Group",
+            {
+                "Training Worst Group": avg_worst_group_accuracy,
+                "Validation Worst Group": avg_worst_group_vaccuracy,
+            },
+            epoch_number + 1,
+        )
+
+        for group, accuracy in group_vaccuracies.items():
+            writer.add_scalar(
+                f"DFR/Group Accuracy/Validation/{group}", accuracy, epoch_number + 1
+            )
+
+        writer.flush()
+
+        # Save best model based on validation loss
+        if avg_vloss < best_vloss:
+            best_vloss = avg_vloss
+            os.makedirs("models", exist_ok=True)
+            model_path = f"models/model_reweighted_{epoch_number}.pt"
+            torch.save(model.state_dict(), model_path)
+
+    return model_path, path_to_tensorboard_run
