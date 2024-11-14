@@ -37,7 +37,7 @@ def train(
             - Path to the saved model with the best validation loss.
             - Path to the TensorBoard log directory.
     """
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now().strftime("%d_%m_%Y_%H%M")
 
     tensorboard_log_dir_path = f"runs/spurious_trainer_{timestamp}"
     writer = SummaryWriter(tensorboard_log_dir_path)
@@ -153,9 +153,27 @@ def train(
         # Save best model
         if avg_vloss < best_vloss:
             best_vloss = avg_vloss
-            os.makedirs("models", exist_ok=True)
-            model_path = f"models/model_{timestamp}_{epoch_number}.pt"
+            model_directory_path = f"models/{timestamp}"
+            os.makedirs(model_directory_path, exist_ok=True)
+
+            model_path = os.path.join(model_directory_path, "model.pt")
             torch.save(model.state_dict(), model_path)
+
+            with open(os.path.join(model_directory_path, "metadata.txt"), "w") as f:
+                f.write(f"Timestamp: {timestamp}\n")
+                f.write(f"Epoch: {epoch_number + 1} / {num_epochs} (Best Model)\n")
+                f.write(f"Validation Loss: {avg_vloss:.4f}\n")
+                f.write(f"Training Accuracy: {avg_accuracy:.4f}\n")
+                f.write(f"Validation Accuracy: {avg_vaccuracy:.4f}\n")
+                f.write(
+                    f"Training Worst Group Accuracy: {avg_worst_group_accuracy:.4f}\n"
+                )
+                f.write(
+                    f"Validation Worst Group Accuracy: {avg_worst_group_vaccuracy:.4f}\n"
+                )
+                f.write(f"Learning Rate: {lr}\n")
+                f.write(f"Optimizer: {optimizer_type.__name__}\n")
+                f.write(f"Loss Function: {loss_function.__class__.__name__}\n")
 
     return model_path, tensorboard_log_dir_path
 
@@ -411,8 +429,25 @@ def deep_feature_reweighting(
         # Save best model based on validation loss
         if avg_vloss < best_vloss:
             best_vloss = avg_vloss
-            os.makedirs("models", exist_ok=True)
-            model_path = f"models/model_reweighted_{epoch_number}.pt"
+            model_directory_path = os.path.dirname(path_to_model)
+
+            model_path = os.path.join(model_directory_path, "dfr_model.pt")
             torch.save(model.state_dict(), model_path)
+
+            with open(os.path.join(model_directory_path, "dfr_metadata.txt"), "w") as f:
+                f.write("Retrained last layer only\n")
+                f.write(f"Epoch: {epoch_number + 1} / {num_epochs} (Best Model)\n")
+                f.write(f"Validation Loss: {avg_vloss:.4f}\n")
+                f.write(f"Training Accuracy: {avg_accuracy:.4f}\n")
+                f.write(f"Validation Accuracy: {avg_vaccuracy:.4f}\n")
+                f.write(
+                    f"Training Worst Group Accuracy: {avg_worst_group_accuracy:.4f}\n"
+                )
+                f.write(
+                    f"Validation Worst Group Accuracy: {avg_worst_group_vaccuracy:.4f}\n"
+                )
+                f.write(f"Learning Rate: {lr}\n")
+                f.write(f"Optimizer: {optimizer_type.__name__}\n")
+                f.write(f"Loss Function: {loss_function.__class__.__name__}\n")
 
     return model_path, path_to_tensorboard_run
