@@ -21,6 +21,7 @@ pre-commit = "^4.0.1"
 tqdm = "^4.66.6"
 tensorboard = "^2.18.0"
 torch-tb-profiler = "^0.4.3"
+ipython = "^8.29.0"
 
 [[tool.poetry.source]]
 name = "pytorch"
