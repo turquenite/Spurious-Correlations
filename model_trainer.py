@@ -58,7 +58,9 @@ def train(
 
     writer.add_image("Samples/MNIST", img_grid)
 
-    for epoch_number in tqdm(range(num_epochs), desc="Epochs"):
+    progress_bar = tqdm(range(num_epochs), desc="Epochs")
+
+    for epoch_number in progress_bar:
         # Train Mode
         model.train(True)
         avg_loss, avg_accuracy, avg_worst_group_accuracy = _train_one_epoch(
@@ -111,14 +113,14 @@ def train(
             total_correct / total_predictions if total_predictions > 0 else 0
         )
 
-        tqdm.write(
-            "LOSS train {:.4f} valid {:.4f} | ACCURACY train {:.4f} valid {:.4f} | WORST GROUP ACCURACY {:.4f}".format(
-                avg_loss,
-                avg_vloss,
-                avg_accuracy,
-                avg_vaccuracy,
-                avg_worst_group_vaccuracy,
-            )
+        progress_bar.set_postfix(
+            {
+                "Train Loss": f"{avg_loss:.4f}",
+                "Valid Loss": f"{avg_vloss:.4f}",
+                "Train Accuracy": f"{avg_accuracy:.2%}",
+                "Valid Accuracy": f"{avg_vaccuracy:.2%}",
+                "Worst Group Accuracy": f"{avg_worst_group_vaccuracy:.2%}",
+            }
         )
 
         # Log metrics to TensorBoard
@@ -194,7 +196,7 @@ def _train_one_epoch(
 
     N = len(train_loader) // 2 - 1
 
-    for i, data in enumerate(tqdm(train_loader, desc="Training Batches", leave=False)):
+    for i, data in enumerate(train_loader):
         inputs, true_labels, encoded_labels, spurious = data
 
         inputs, true_labels, encoded_labels, spurious = (
@@ -247,10 +249,6 @@ def _train_one_epoch(
 
             overall_accuracy = (
                 total_correct / total_predictions if total_predictions > 0 else 0
-            )
-
-            tqdm.write(
-                f"Batch {i + 1} | Loss: {last_loss:.4f} | Accuracy: {overall_accuracy:.4f} | Worst Group Accuracy: {worst_group_accuracy:.4f}"
             )
 
             tb_x = current_epoch * len(train_loader) + i + 1
@@ -339,7 +337,9 @@ def deep_feature_reweighting(
     best_vloss = math.inf
     model_path = None
 
-    for epoch_number in tqdm(range(num_epochs), desc="Reweighting Epochs"):
+    progress_bar = tqdm(range(num_epochs), desc="Reweighting Epochs")
+
+    for epoch_number in progress_bar:
         model.train()
 
         # Train only the last layer
@@ -389,14 +389,14 @@ def deep_feature_reweighting(
             total_correct / total_predictions if total_predictions > 0 else 0
         )
 
-        tqdm.write(
-            "LOSS train {:.4f} valid {:.4f} | ACCURACY train {:.4f} valid {:.4f} | WORST GROUP ACCURACY {:.4f}".format(
-                avg_loss,
-                avg_vloss,
-                avg_accuracy,
-                avg_vaccuracy,
-                avg_worst_group_vaccuracy,
-            )
+        progress_bar.set_postfix(
+            {
+                "Train Loss": f"{avg_loss:.4f}",
+                "Valid Loss": f"{avg_vloss:.4f}",
+                "Train Accuracy": f"{avg_accuracy:.2%}",
+                "Valid Accuracy": f"{avg_vaccuracy:.2%}",
+                "Worst Group Accuracy": f"{avg_worst_group_vaccuracy:.2%}",
+            }
         )
 
         # Log to TensorBoard
