@@ -1,6 +1,6 @@
 # 🔍 Analyzing Spurious Correlations with Deep Feature Reweighting
 
-This repository is dedicated to exploring the effect of **spurious correlations** in datasets and the application of **Deep Feature Reweighting** to address them. The project uses the **MNIST handwritten digit dataset**, guided by the findings from the paper "[Deep Feature Reweighting for Spurious Correlation Elimination](https://openreview.net/forum?id=Zb6c8A-Fghk)".
+This repository is dedicated to exploring the effect of **spurious correlations** in datasets and the application of **Deep Feature Reweighting** (DFR) to address them. The project uses the **MNIST handwritten digit dataset**, guided by the findings from the paper "[Deep Feature Reweighting for Spurious Correlation Elimination](https://openreview.net/forum?id=Zb6c8A-Fghk)".
 
 ## 🛠️ Project Setup
 
@@ -51,5 +51,5 @@ tensorboard --logdir=runs
 - `models.py`: Defines model architectures.
 - `poetry.lock` and `pyproject.toml`: Poetry files for dependency management.
 - `README.md`: Project documentation.
-- `sandbox.py`: A scratch file for testing code snippets, model experiments, or debugging.
+- `sandbox.ipynb`: A notebook for experimenting with spurious features in datasets, training models, and applying DFR.
 - `spurious_features.py`: Functions for introducing spurious features into the MNIST images.
