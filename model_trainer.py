@@ -20,6 +20,7 @@ def train(
     optimizer_type=torch.optim.Adam,
     lr: float = 0.001,
     loss_function=torch.nn.CrossEntropyLoss(),
+    experiment_description: str | None = None,
 ) -> tuple[str, str]:
     """Trains given model for num_epochs.
 
@@ -31,6 +32,7 @@ def train(
         optimizer_type (_type_, optional): Optimizer used during training. Defaults to torch.optim.Adam.
         lr (float, optional): Learning rate for the optimizer. Defaults to 0.001.
         loss_function (_type_, optional): Loss function. Defaults to torch.nn.CrossEntropyLoss().
+        experiment_description: str|None: Short experiment description used for saving and logging if not None.
 
     Returns:
         tuple: (str, str) containing:
@@ -39,7 +41,12 @@ def train(
     """
     timestamp = datetime.now().strftime("%d_%m_%Y_%H%M")
 
-    tensorboard_log_dir_path = f"runs/spurious_trainer_{timestamp}"
+    tensorboard_log_dir_path = (
+        f"runs/{timestamp}_{experiment_description}"
+        if experiment_description
+        else f"runs/{timestamp}"
+    )
+
     writer = SummaryWriter(tensorboard_log_dir_path)
 
     optimizer = optimizer_type(model.parameters(), lr)
@@ -155,13 +162,22 @@ def train(
         # Save best model
         if avg_vloss < best_vloss:
             best_vloss = avg_vloss
-            model_directory_path = f"models/{timestamp}"
+
+            model_directory_path = (
+                f"models/{timestamp}_{experiment_description}"
+                if experiment_description
+                else f"models/{timestamp}"
+            )
+
             os.makedirs(model_directory_path, exist_ok=True)
 
             model_path = os.path.join(model_directory_path, "model.pt")
             torch.save(model.state_dict(), model_path)
 
             with open(os.path.join(model_directory_path, "metadata.txt"), "w") as f:
+                if experiment_description:
+                    f.write(f"Description: {experiment_description}\n")
+
                 f.write(f"Timestamp: {timestamp}\n")
                 f.write(f"Epoch: {epoch_number + 1} / {num_epochs} (Best Model)\n")
                 f.write(f"Validation Loss: {avg_vloss:.4f}\n")
