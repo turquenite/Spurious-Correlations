@@ -8,7 +8,7 @@ import torch.nn.functional as F
 class SimpleModel(torch.nn.Module):
     """Simple Model Class with 2 convolutional Layers, 1 pool Layer and 3 fully-connected layers."""
 
-    def __init__(self, num_classes: int = 10):
+    def __init__(self, num_classes: int = 10, latent_size: int = 64):
         """Initialize model.
 
         Args:
@@ -30,9 +30,9 @@ class SimpleModel(torch.nn.Module):
         )  # output: 64 x 7 x 7
 
         # Fully Connected Layers
-        self.fc1 = nn.Linear(64 * 7 * 7, 128)  # Flattened image size: 64 * 7 * 7
-        self.fc2 = nn.Linear(128, 64)
-        self.fc3 = nn.Linear(64, num_classes)
+        self.fc1 = nn.Linear(64 * 7 * 7, latent_size)
+
+        self.fc2 = nn.Linear(latent_size, num_classes)
 
     def forward(self, x: torch.tensor) -> torch.tensor:
         """Forward pass of Model.
@@ -50,7 +50,6 @@ class SimpleModel(torch.nn.Module):
         x = x.view(-1, 64 * 7 * 7)  # Flatten 64 x 7 x 7 into 3136
 
         x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
+        x = self.fc2(x)
 
         return x
