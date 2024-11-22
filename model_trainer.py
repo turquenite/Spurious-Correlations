@@ -62,7 +62,6 @@ def train(
     example_plots, example_true_label, _, _ = next(example_batch)
 
     img_grid = torchvision.utils.make_grid(example_plots)
-
     writer.add_image("Samples/MNIST", img_grid)
 
     progress_bar = tqdm(range(num_epochs), desc="Epochs")
@@ -70,6 +69,7 @@ def train(
     for epoch_number in progress_bar:
         # Train Mode
         model.train(True)
+
         avg_loss, avg_accuracy, avg_worst_group_accuracy = _train_one_epoch(
             epoch_number, writer, model, train_loader, loss_function, optimizer, device
         )
@@ -194,108 +194,6 @@ def train(
                 f.write(f"Loss Function: {loss_function.__class__.__name__}\n")
 
     return model_path, tensorboard_log_dir_path
-
-
-def _train_one_epoch(
-    current_epoch: int,
-    tb_writer: SummaryWriter,
-    model: torch.nn.Module,
-    train_loader: DataLoader,
-    loss_function,
-    optimizer,
-    device,
-):
-    running_loss = 0.0
-    last_loss = 0.0
-    num_predictions = defaultdict(int)
-    num_correct_predictions = defaultdict(int)
-
-    N = len(train_loader) // 2 - 1
-
-    for i, data in enumerate(train_loader):
-        inputs, true_labels, encoded_labels, spurious = data
-
-        inputs, true_labels, encoded_labels, spurious = (
-            inputs.to(device),
-            true_labels.to(device),
-            encoded_labels.to(device),
-            spurious.to(device),
-        )
-
-        # Zero your gradients for every batch!
-        optimizer.zero_grad()
-
-        # Make predictions for this batch
-        outputs = model(inputs)
-
-        # Fetch predicted labels for computing accuracy labels later
-        _, predicted_labels = torch.max(outputs, 1)
-
-        for pred, encoded_label, true_label, spur in zip(
-            predicted_labels, encoded_labels, true_labels, spurious
-        ):
-            key = f"{true_label} - {'spurious' if spur else 'not spurious'}"
-
-            if pred.item() == encoded_label.item():
-                num_correct_predictions[key] += 1
-
-            num_predictions[key] += 1
-
-        # Compute the loss and its gradients
-        loss = loss_function(outputs, encoded_labels)
-        loss.backward()
-
-        # Adjust learning weights
-        optimizer.step()
-
-        # Gather data and report
-        running_loss += loss.item()
-
-        if i % N == N - 1:
-            last_loss = running_loss / N
-
-            group_accuracies = {
-                group: num_correct_predictions[group] / num_predictions[group]
-                for group in num_predictions
-            }
-            worst_group_accuracy = min(group_accuracies.values())
-
-            total_correct = sum(num_correct_predictions.values())
-            total_predictions = sum(num_predictions.values())
-
-            overall_accuracy = (
-                total_correct / total_predictions if total_predictions > 0 else 0
-            )
-
-            tb_x = current_epoch * len(train_loader) + i + 1
-
-            tb_writer.add_scalar("Loss/Batch Training Loss", last_loss, tb_x)
-            tb_writer.add_scalar(
-                "Accuracy/Overall Training Accuracy", overall_accuracy, tb_x
-            )
-            tb_writer.add_scalar(
-                "Accuracy/Worst Group Training Accuracy", worst_group_accuracy, tb_x
-            )
-
-            for group, accuracy in group_accuracies.items():
-                tb_writer.add_scalar(f"Accuracy/Training/{group}", accuracy, tb_x)
-
-            running_loss = 0.0
-
-    avg_loss = running_loss / len(train_loader)
-
-    group_accuracies = {
-        group: num_correct_predictions[group] / num_predictions[group]
-        for group in num_predictions
-    }
-
-    worst_group_accuracy = min(group_accuracies.values())
-
-    total_correct = sum(num_correct_predictions.values())
-    total_predictions = sum(num_predictions.values())
-    overall_accuracy = total_correct / total_predictions if total_predictions > 0 else 0
-
-    return avg_loss, overall_accuracy, worst_group_accuracy
 
 
 def deep_feature_reweighting(
@@ -467,3 +365,105 @@ def deep_feature_reweighting(
                 f.write(f"Loss Function: {loss_function.__class__.__name__}\n")
 
     return model_path, path_to_tensorboard_run
+
+
+def _train_one_epoch(
+    current_epoch: int,
+    tb_writer: SummaryWriter,
+    model: torch.nn.Module,
+    train_loader: DataLoader,
+    loss_function,
+    optimizer,
+    device,
+):
+    running_loss = 0.0
+    last_loss = 0.0
+    num_predictions = defaultdict(int)
+    num_correct_predictions = defaultdict(int)
+
+    N = len(train_loader) // 2 - 1
+
+    for i, data in enumerate(train_loader):
+        inputs, true_labels, encoded_labels, spurious = data
+
+        inputs, true_labels, encoded_labels, spurious = (
+            inputs.to(device),
+            true_labels.to(device),
+            encoded_labels.to(device),
+            spurious.to(device),
+        )
+
+        # Set gradients to zero
+        optimizer.zero_grad()
+
+        # Fetch predictions
+        outputs = model(inputs)
+
+        # Get predicted labels
+        _, predicted_labels = torch.max(outputs, 1)
+
+        for pred, encoded_label, true_label, spur in zip(
+            predicted_labels, encoded_labels, true_labels, spurious
+        ):
+            key = f"{true_label} - {'spurious' if spur else 'not spurious'}"
+
+            if pred.item() == encoded_label.item():
+                num_correct_predictions[key] += 1
+
+            num_predictions[key] += 1
+
+        # Compute the loss
+        loss = loss_function(outputs, encoded_labels)
+        loss.backward()
+
+        # Perform optimization step
+        optimizer.step()
+
+        # Add loss
+        running_loss += loss.item()
+
+        if i % N == N - 1:
+            last_loss = running_loss / N
+
+            group_accuracies = {
+                group: num_correct_predictions[group] / num_predictions[group]
+                for group in num_predictions
+            }
+            worst_group_accuracy = min(group_accuracies.values())
+
+            total_correct = sum(num_correct_predictions.values())
+            total_predictions = sum(num_predictions.values())
+
+            overall_accuracy = (
+                total_correct / total_predictions if total_predictions > 0 else 0
+            )
+
+            tb_x = current_epoch * len(train_loader) + i + 1
+
+            tb_writer.add_scalar("Loss/Batch Training Loss", last_loss, tb_x)
+            tb_writer.add_scalar(
+                "Accuracy/Overall Training Accuracy", overall_accuracy, tb_x
+            )
+            tb_writer.add_scalar(
+                "Accuracy/Worst Group Training Accuracy", worst_group_accuracy, tb_x
+            )
+
+            for group, accuracy in group_accuracies.items():
+                tb_writer.add_scalar(f"Accuracy/Training/{group}", accuracy, tb_x)
+
+            running_loss = 0.0
+
+    avg_loss = running_loss / len(train_loader)
+
+    group_accuracies = {
+        group: num_correct_predictions[group] / num_predictions[group]
+        for group in num_predictions
+    }
+
+    worst_group_accuracy = min(group_accuracies.values())
+
+    total_correct = sum(num_correct_predictions.values())
+    total_predictions = sum(num_predictions.values())
+    overall_accuracy = total_correct / total_predictions if total_predictions > 0 else 0
+
+    return avg_loss, overall_accuracy, worst_group_accuracy
