@@ -15,7 +15,7 @@ from tqdm import tqdm
 def train(
     num_epochs: int,
     model: torch.nn.Module,
-    validation_loader: DataLoader,
+    validation_loaders: dict[str, DataLoader],
     train_loader: DataLoader,
     optimizer_type=torch.optim.Adam,
     lr: float = 0.001,
@@ -27,7 +27,7 @@ def train(
     Args:
         num_epochs (int): Number of epochs.
         model (torch.nn.Module): Model architecture.
-        validation_loader (DataLoader): DataLoader for validation set.
+        validation_loaders (dict[str, DataLoader]): A dictionary containing all Dataloader which should be used for evaluation. The key should serve as description.
         train_loader (DataLoader): DataLoader for train set.
         optimizer_type (_type_, optional): Optimizer used during training. Defaults to torch.optim.Adam.
         lr (float, optional): Learning rate for the optimizer. Defaults to 0.001.
@@ -64,7 +64,7 @@ def train(
     img_grid = torchvision.utils.make_grid(example_plots)
     writer.add_image("Samples/MNIST", img_grid)
 
-    progress_bar = tqdm(range(num_epochs), desc="Epochs")
+    progress_bar = tqdm(range(1, num_epochs + 1), desc="Epochs")
 
     for epoch_number in progress_bar:
         # Train Mode
@@ -74,90 +74,61 @@ def train(
             epoch_number, writer, model, train_loader, loss_function, optimizer, device
         )
 
-        running_vloss = 0.0
-        num_predictions = defaultdict(int)
-        num_correct_predictions = defaultdict(int)
-
-        # Evaluation Mode
-        model.eval()
-
-        # Disable gradient computation
-        with torch.no_grad():
-            for i, vdata in enumerate(validation_loader):
-                vinputs, vtrue_labels, vencoded_labels, vspurious = vdata
-                vinputs, vtrue_labels, vencoded_labels, vspurious = (
-                    vinputs.to(device),
-                    vtrue_labels.to(device),
-                    vencoded_labels.to(device),
-                    vspurious.to(device),
-                )
-                voutputs = model(vinputs)
-                vloss = loss_function(voutputs, vencoded_labels)
-                running_vloss += vloss.item()
-
-                _, predicted_labels = torch.max(voutputs, 1)
-
-                for pred, encoded_label, true_label, spur in zip(
-                    predicted_labels, vencoded_labels, vtrue_labels, vspurious
-                ):
-                    key = f"{true_label} - {'spurious' if spur else 'not spurious'}"
-
-                    if pred.item() == encoded_label.item():
-                        num_correct_predictions[key] += 1
-
-                    num_predictions[key] += 1
-
-        avg_vloss = float(running_vloss / (i + 1))
-        group_vaccuracies = {
-            group: num_correct_predictions[group] / num_predictions[group]
-            for group in num_predictions
-        }
-        avg_worst_group_vaccuracy = min(group_vaccuracies.values())
-
-        total_correct = sum(num_correct_predictions.values())
-        total_predictions = sum(num_predictions.values())
-        avg_vaccuracy = (
-            total_correct / total_predictions if total_predictions > 0 else 0
-        )
-
-        progress_bar.set_postfix(
-            {
-                "Train Loss": f"{avg_loss:.4f}",
-                "Valid Loss": f"{avg_vloss:.4f}",
-                "Train Accuracy": f"{avg_accuracy:.2%}",
-                "Valid Accuracy": f"{avg_vaccuracy:.2%}",
-                "Worst Group Accuracy": f"{avg_worst_group_vaccuracy:.2%}",
-            }
-        )
-
-        # Log metrics to TensorBoard
         writer.add_scalars(
             "Loss/Epoch",
-            {"Training": avg_loss, "Validation": avg_vloss},
-            epoch_number + 1,
+            {
+                "Training": avg_loss,
+            },
+            epoch_number,
         )
 
         writer.add_scalars(
             "Accuracy/Epoch",
-            {"Training": avg_accuracy, "Validation": avg_vaccuracy},
-            epoch_number + 1,
+            {
+                "Training": avg_accuracy,
+            },
+            epoch_number,
         )
 
         writer.add_scalars(
             "Accuracy/Worst Group",
             {
-                "Training Worst Group": avg_worst_group_accuracy,
-                "Validation Worst Group": avg_worst_group_vaccuracy,
+                "Training": avg_worst_group_accuracy,
             },
-            epoch_number + 1,
+            epoch_number,
         )
 
-        for group, accuracy in group_vaccuracies.items():
-            writer.add_scalar(
-                f"Group Accuracy/Validation/{group}", accuracy, epoch_number + 1
-            )
+        evaluation_metrics = _evaluate_model(
+            dataloaders=validation_loaders,
+            model=model,
+            writer=writer,
+            device=device,
+            loss_function=loss_function,
+            epoch_number=epoch_number,
+        )
 
-        writer.flush()
+        progress_bar.set_postfix(
+            {
+                "Train Loss": f"{avg_loss:.4f}",
+                **{
+                    f"Valid Loss {desc}": value
+                    for desc, value in evaluation_metrics["Loss"].items()
+                },
+                "Train Accuracy": f"{avg_accuracy:.2%}",
+                **{
+                    f"Valid Accuracy {desc}": value
+                    for desc, value in evaluation_metrics["Accuracy"].items()
+                },
+                **{
+                    f"Valid Worst Group Accuracy {desc}": value
+                    for desc, value in evaluation_metrics[
+                        "Worst_group_accuracy"
+                    ].items()
+                },
+            }
+        )
+
+        avg_vloss = evaluation_metrics["Loss"][list(validation_loaders.keys())[0]]
 
         # Save best model
         if avg_vloss < best_vloss:
@@ -180,15 +151,22 @@ def train(
 
                 f.write(f"Timestamp: {timestamp}\n")
                 f.write(f"Epoch: {epoch_number + 1} / {num_epochs} (Best Model)\n")
-                f.write(f"Validation Loss: {avg_vloss:.4f}\n")
+
+                for desc, value in evaluation_metrics["Loss"].items():
+                    f.write(f"Validation Loss {desc}: {value:.4f}\n")
+
                 f.write(f"Training Accuracy: {avg_accuracy:.4f}\n")
-                f.write(f"Validation Accuracy: {avg_vaccuracy:.4f}\n")
+
+                for desc, value in evaluation_metrics["Accuracy"].items():
+                    f.write(f"Validation Accuracy {desc}: {value:.4f}\n")
+
                 f.write(
                     f"Training Worst Group Accuracy: {avg_worst_group_accuracy:.4f}\n"
                 )
-                f.write(
-                    f"Validation Worst Group Accuracy: {avg_worst_group_vaccuracy:.4f}\n"
-                )
+
+                for desc, value in evaluation_metrics["Worst_group_accuracy"].items():
+                    f.write(f"Validation Worst Group Accuracy {desc}: {value:.4f}\n")
+
                 f.write(f"Learning Rate: {lr}\n")
                 f.write(f"Optimizer: {optimizer_type.__name__}\n")
                 f.write(f"Loss Function: {loss_function.__class__.__name__}\n")
@@ -201,7 +179,7 @@ def deep_feature_reweighting(
     path_to_tensorboard_run: str,
     num_epochs: int,
     model: torch.nn.Module,
-    validation_loader: DataLoader,
+    validation_loaders: dict[str, DataLoader],
     train_loader: DataLoader,
     optimizer_type=torch.optim.Adam,
     lr: float = 0.001,
@@ -214,7 +192,7 @@ def deep_feature_reweighting(
         path_to_tensorboard_run (str): Path to TensorBoard run.
         num_epochs (int): Number of epochs.
         model (torch.nn.Module): Model architecture.
-        validation_loader (DataLoader): DataLoader for validation set.
+        validation_loaders (dict[str, DataLoader]): A dictionary containing all Dataloader which should be used for evaluation. The key should serve as description.
         train_loader (DataLoader): DataLoader for train set.
         optimizer_type (_type_, optional): Optimizer used during training. Defaults to torch.optim.Adam.
         lr (float, optional): Learning rate for the optimizer. Defaults to 0.001.
@@ -227,7 +205,6 @@ def deep_feature_reweighting(
     """
     # Load pre-trained model state
     model.load_state_dict(torch.load(path_to_model, weights_only=True))
-    model.eval()
 
     # Freeze all layers
     for param in model.parameters():
@@ -251,7 +228,18 @@ def deep_feature_reweighting(
     best_vloss = math.inf
     model_path = None
 
-    progress_bar = tqdm(range(num_epochs), desc="Reweighting Epochs")
+    # Evaluate Model before retraining
+    _evaluate_model(
+        dataloaders=validation_loaders,
+        model=model,
+        writer=writer,
+        epoch_number=0,
+        device=device,
+        loss_function=loss_function,
+        reweighting=True,
+    )
+
+    progress_bar = tqdm(range(1, num_epochs + 1), desc="Reweighting Epochs")
 
     for epoch_number in progress_bar:
         model.train()
@@ -261,84 +249,62 @@ def deep_feature_reweighting(
             epoch_number, writer, model, train_loader, loss_function, optimizer, device
         )
 
-        running_vloss = 0.0
-        num_predictions = defaultdict(int)
-        num_correct_predictions = defaultdict(int)
+        writer.add_scalars(
+            "DFR-Loss/Epoch",
+            {
+                "Training": avg_loss,
+            },
+            epoch_number,
+        )
 
-        model.eval()
+        writer.add_scalars(
+            "DFR-Accuracy/Epoch",
+            {
+                "Training": avg_accuracy,
+            },
+            epoch_number,
+        )
 
-        with torch.no_grad():
-            for i, vdata in enumerate(validation_loader):
-                vinputs, vtrue_labels, vencoded_labels, vspurious = vdata
-                vinputs, vtrue_labels, vencoded_labels, vspurious = (
-                    vinputs.to(device),
-                    vtrue_labels.to(device),
-                    vencoded_labels.to(device),
-                    vspurious.to(device),
-                )
-                voutputs = model(vinputs)
-                vloss = loss_function(voutputs, vencoded_labels)
-                running_vloss += vloss.item()
+        writer.add_scalars(
+            "DFR-Accuracy/Worst Group",
+            {
+                "Training": avg_worst_group_accuracy,
+            },
+            epoch_number,
+        )
 
-                _, predicted_labels = torch.max(voutputs, 1)
-
-                for pred, encoded_label, true_label, spur in zip(
-                    predicted_labels, vencoded_labels, vtrue_labels, vspurious
-                ):
-                    key = f"{true_label} - {'spurious' if spur else 'not spurious'}"
-                    if pred.item() == encoded_label.item():
-                        num_correct_predictions[key] += 1
-                    num_predictions[key] += 1
-
-        avg_vloss = float(running_vloss / (i + 1))
-        group_vaccuracies = {
-            group: num_correct_predictions[group] / num_predictions[group]
-            for group in num_predictions
-        }
-        avg_worst_group_vaccuracy = min(group_vaccuracies.values())
-
-        total_correct = sum(num_correct_predictions.values())
-        total_predictions = sum(num_predictions.values())
-        avg_vaccuracy = (
-            total_correct / total_predictions if total_predictions > 0 else 0
+        evaluation_metrics = _evaluate_model(
+            dataloaders=validation_loaders,
+            model=model,
+            writer=writer,
+            epoch_number=epoch_number,
+            device=device,
+            loss_function=loss_function,
+            reweighting=True,
         )
 
         progress_bar.set_postfix(
             {
                 "Train Loss": f"{avg_loss:.4f}",
-                "Valid Loss": f"{avg_vloss:.4f}",
+                **{
+                    f"Valid Loss {desc}": value
+                    for desc, value in evaluation_metrics["Loss"].items()
+                },
                 "Train Accuracy": f"{avg_accuracy:.2%}",
-                "Valid Accuracy": f"{avg_vaccuracy:.2%}",
-                "Worst Group Accuracy": f"{avg_worst_group_vaccuracy:.2%}",
+                **{
+                    f"Valid Accuracy {desc}": value
+                    for desc, value in evaluation_metrics["Accuracy"].items()
+                },
+                **{
+                    f"Valid Worst Group Accuracy {desc}": value
+                    for desc, value in evaluation_metrics[
+                        "Worst_group_accuracy"
+                    ].items()
+                },
             }
         )
 
-        # Log to TensorBoard
-        writer.add_scalars(
-            "DFR/Loss/Epoch",
-            {"Training": avg_loss, "Validation": avg_vloss},
-            epoch_number + 1,
-        )
-        writer.add_scalars(
-            "DFR/Accuracy/Epoch",
-            {"Training": avg_accuracy, "Validation": avg_vaccuracy},
-            epoch_number + 1,
-        )
-        writer.add_scalars(
-            "DFR/Accuracy/Worst Group",
-            {
-                "Training Worst Group": avg_worst_group_accuracy,
-                "Validation Worst Group": avg_worst_group_vaccuracy,
-            },
-            epoch_number + 1,
-        )
-
-        for group, accuracy in group_vaccuracies.items():
-            writer.add_scalar(
-                f"DFR/Group Accuracy/Validation/{group}", accuracy, epoch_number + 1
-            )
-
-        writer.flush()
+        avg_vloss = evaluation_metrics["Accuracy"][list(validation_loaders.keys())[0]]
 
         # Save best model based on validation loss
         if avg_vloss < best_vloss:
@@ -350,16 +316,23 @@ def deep_feature_reweighting(
 
             with open(os.path.join(model_directory_path, "dfr_metadata.txt"), "w") as f:
                 f.write("Retrained last layer only\n")
-                f.write(f"Epoch: {epoch_number + 1} / {num_epochs} (Best Model)\n")
-                f.write(f"Validation Loss: {avg_vloss:.4f}\n")
+                f.write(f"Epoch: {epoch_number} / {num_epochs} (Best Model)\n")
+
+                for desc, value in evaluation_metrics["Loss"].items():
+                    f.write(f"Validation Loss {desc}: {value:.4f}\n")
+
                 f.write(f"Training Accuracy: {avg_accuracy:.4f}\n")
-                f.write(f"Validation Accuracy: {avg_vaccuracy:.4f}\n")
+
+                for desc, value in evaluation_metrics["Accuracy"].items():
+                    f.write(f"Validation Accuracy {desc}: {value:.4f}\n")
+
                 f.write(
                     f"Training Worst Group Accuracy: {avg_worst_group_accuracy:.4f}\n"
                 )
-                f.write(
-                    f"Validation Worst Group Accuracy: {avg_worst_group_vaccuracy:.4f}\n"
-                )
+
+                for desc, value in evaluation_metrics["Worst_group_accuracy"].items():
+                    f.write(f"Validation Worst Group Accuracy {desc}: {value:.4f}\n")
+
                 f.write(f"Learning Rate: {lr}\n")
                 f.write(f"Optimizer: {optimizer_type.__name__}\n")
                 f.write(f"Loss Function: {loss_function.__class__.__name__}\n")
@@ -378,6 +351,7 @@ def _train_one_epoch(
 ):
     running_loss = 0.0
     last_loss = 0.0
+    total_loss = 0.0
     num_predictions = defaultdict(int)
     num_correct_predictions = defaultdict(int)
 
@@ -421,8 +395,9 @@ def _train_one_epoch(
 
         # Add loss
         running_loss += loss.item()
+        total_loss += loss.item()
 
-        if i % N == N - 1:
+        if i % N == N:
             last_loss = running_loss / N
 
             group_accuracies = {
@@ -438,7 +413,7 @@ def _train_one_epoch(
                 total_correct / total_predictions if total_predictions > 0 else 0
             )
 
-            tb_x = current_epoch * len(train_loader) + i + 1
+            tb_x = (current_epoch - 1) * len(train_loader) + i
 
             tb_writer.add_scalar("Loss/Batch Training Loss", last_loss, tb_x)
             tb_writer.add_scalar(
@@ -453,7 +428,7 @@ def _train_one_epoch(
 
             running_loss = 0.0
 
-    avg_loss = running_loss / len(train_loader)
+    avg_loss = total_loss / len(train_loader)
 
     group_accuracies = {
         group: num_correct_predictions[group] / num_predictions[group]
@@ -467,3 +442,103 @@ def _train_one_epoch(
     overall_accuracy = total_correct / total_predictions if total_predictions > 0 else 0
 
     return avg_loss, overall_accuracy, worst_group_accuracy
+
+
+def _evaluate_model(
+    dataloaders: dict[str, DataLoader],
+    model: torch.nn.Module,
+    writer: SummaryWriter,
+    epoch_number: int,
+    device: str,
+    loss_function,
+    reweighting=False,
+):
+    # Evaluation Mode
+    model.eval()
+    metrics = defaultdict(dict)
+    all_group_accuracies = dict()
+
+    for describtion, dataloader in dataloaders.items():
+        running_vloss = 0.0
+        num_predictions = defaultdict(int)
+        num_correct_predictions = defaultdict(int)
+
+        # Disable gradient computation
+        with torch.no_grad():
+            for i, vdata in enumerate(dataloader):
+                vinputs, vtrue_labels, vencoded_labels, vspurious = vdata
+                vinputs, vtrue_labels, vencoded_labels, vspurious = (
+                    vinputs.to(device),
+                    vtrue_labels.to(device),
+                    vencoded_labels.to(device),
+                    vspurious.to(device),
+                )
+                voutputs = model(vinputs)
+                vloss = loss_function(voutputs, vencoded_labels)
+                running_vloss += vloss.item()
+
+                _, predicted_labels = torch.max(voutputs, 1)
+
+                for pred, encoded_label, true_label, spur in zip(
+                    predicted_labels, vencoded_labels, vtrue_labels, vspurious
+                ):
+                    key = f"{true_label} - {'spurious' if spur else 'not spurious'}"
+
+                    if pred.item() == encoded_label.item():
+                        num_correct_predictions[key] += 1
+
+                    num_predictions[key] += 1
+
+        avg_vloss = float(running_vloss / (i + 1))
+        group_vaccuracies = {
+            group: num_correct_predictions[group] / num_predictions[group]
+            for group in num_predictions
+        }
+        avg_worst_group_vaccuracy = min(group_vaccuracies.values())
+        all_group_accuracies[describtion] = group_vaccuracies
+
+        total_correct = sum(num_correct_predictions.values())
+        total_predictions = sum(num_predictions.values())
+        avg_vaccuracy = (
+            total_correct / total_predictions if total_predictions > 0 else 0
+        )
+
+        metrics["Loss"][describtion] = avg_vloss
+        metrics["Accuracy"][describtion] = avg_vaccuracy
+        metrics["Worst_group_accuracy"][describtion] = avg_worst_group_vaccuracy
+
+    # Log metrics to TensorBoard
+    writer.add_scalars(
+        "DFR-Loss/Epoch" if reweighting else "Loss/Epoch",
+        {f"Validation/{desc}": value for desc, value in metrics["Loss"].items()},
+        epoch_number,
+    )
+
+    writer.add_scalars(
+        "DFR-Accuracy/Epoch" if reweighting else "Accuracy/Epoch",
+        {f"Validation/{desc}": value for desc, value in metrics["Accuracy"].items()},
+        epoch_number,
+    )
+
+    writer.add_scalars(
+        "DFR-Accuracy/Worst Group" if reweighting else "Accuracy/Worst Group",
+        {
+            f"Validation/{desc}": value
+            for desc, value in metrics["Worst_group_accuracy"].items()
+        },
+        epoch_number,
+    )
+
+    for desc, group_accuracies in all_group_accuracies.items():
+        for group, accuracy in group_accuracies.items():
+            writer.add_scalar(
+                f"DFR-Group Accuracy/Validation/{desc}/{group}"
+                if reweighting
+                else f"Group Accuracy/Validation/{desc}/{group}",
+                accuracy,
+                epoch_number,
+            )
+
+    writer.flush()
+
+    return metrics
