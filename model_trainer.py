@@ -118,10 +118,7 @@ def train(
         progress_bar.set_postfix(
             {
                 "Train Loss": f"{avg_loss:.4f}",
-                **{
-                    f"Valid Loss {desc}": value
-                    for desc, value in evaluation_metrics["Loss"].items()
-                },
+                f"Valid Loss {list(validation_loaders.keys())[0]}": f"{evaluation_metrics['Loss'][list(validation_loaders.keys())[0]]:.4f}",
                 "Train Accuracy": f"{avg_accuracy:.2%}",
                 **{
                     f"Valid Accuracy {desc}": value
@@ -314,10 +311,7 @@ def deep_feature_reweighting(
         progress_bar.set_postfix(
             {
                 "Train Loss": f"{avg_loss:.4f}",
-                **{
-                    f"Valid Loss {desc}": value
-                    for desc, value in evaluation_metrics["Loss"].items()
-                },
+                f"Valid Loss {list(validation_loaders.keys())[0]}": f"{evaluation_metrics['Loss'][list(validation_loaders.keys())[0]]:.4f}",
                 "Train Accuracy": f"{avg_accuracy:.2%}",
                 **{
                     f"Valid Accuracy {desc}": value
