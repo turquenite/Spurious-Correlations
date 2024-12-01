@@ -21,6 +21,8 @@ def train(
     lr: float = 0.001,
     weight_decay: float = 0,
     loss_function=torch.nn.CrossEntropyLoss(),
+    use_early_stopping: bool = True,
+    patience: int = 5,
     experiment_description: str | None = None,
 ) -> tuple[str, str]:
     """Trains given model for num_epochs.
@@ -34,6 +36,8 @@ def train(
         lr (float, optional): Learning rate for the optimizer. Defaults to 0.001.
         weight_decay (float, optional): Weight decay (L2 penalty) for the optimizer. Defaults to 0.
         loss_function (_type_, optional): Loss function. Defaults to torch.nn.CrossEntropyLoss().
+        use_early_stopping (bool, optional): Whether to use (True) or not use (False) early stopping. Defaults to True.
+        patience (int, optional): Number of epochs to wait for improvement before triggering early stopping. Defaults to 5.
         experiment_description: str|None: Short experiment description used for saving and logging if not None.
 
     Returns:
@@ -50,6 +54,8 @@ def train(
     )
 
     writer = SummaryWriter(tensorboard_log_dir_path)
+
+    early_stopping_counter = 0
 
     optimizer = optimizer_type(model.parameters(), lr, weight_decay=weight_decay)
 
@@ -136,6 +142,9 @@ def train(
         if avg_vloss < best_vloss:
             best_vloss = avg_vloss
 
+            # Reset early stopping counter
+            early_stopping_counter = 0
+
             model_directory_path = (
                 f"models/{timestamp}_{experiment_description}"
                 if experiment_description
@@ -173,6 +182,13 @@ def train(
                 f.write(f"Optimizer: {optimizer_type.__name__}\n")
                 f.write(f"Loss Function: {loss_function.__class__.__name__}\n")
 
+        else:
+            early_stopping_counter += 1
+
+        if use_early_stopping and early_stopping_counter >= patience:
+            print("Early Stopping triggered")
+            break
+
     return model_path, tensorboard_log_dir_path
 
 
@@ -187,6 +203,8 @@ def deep_feature_reweighting(
     lr: float = 0.001,
     weight_decay: float = 0,
     loss_function=torch.nn.CrossEntropyLoss(),
+    use_early_stopping: bool = True,
+    patience: int = 5,
 ) -> tuple[str, str]:
     """Apply DFR to an already pretrained model by retraining the last layer.
 
@@ -201,6 +219,8 @@ def deep_feature_reweighting(
         lr (float, optional): Learning rate for the optimizer. Defaults to 0.001.
         weight_decay (float, optional): Weight decay (L2 penalty) for the optimizer. Defaults to 0.
         loss_function (_type_, optional): Loss function. Defaults to torch.nn.CrossEntropyLoss().
+        use_early_stopping (bool, optional): Whether to use (True) or not use (False) early stopping. Defaults to True.
+        patience (int, optional): Number of epochs to wait for improvement before triggering early stopping. Defaults to 5.
 
     Returns:
         tuple: (str, str) containing:
@@ -227,6 +247,8 @@ def deep_feature_reweighting(
     )
 
     writer = SummaryWriter(path_to_tensorboard_run)
+
+    early_stopping_counter = 0
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = model.to(device)
@@ -315,6 +337,10 @@ def deep_feature_reweighting(
         # Save best model based on validation loss
         if avg_vloss < best_vloss:
             best_vloss = avg_vloss
+
+            # Reset early stopping counter
+            early_stopping_counter = 0
+
             model_directory_path = os.path.dirname(path_to_model)
 
             model_path = os.path.join(model_directory_path, "dfr_model.pt")
@@ -342,6 +368,13 @@ def deep_feature_reweighting(
                 f.write(f"Learning Rate: {lr}\n")
                 f.write(f"Optimizer: {optimizer_type.__name__}\n")
                 f.write(f"Loss Function: {loss_function.__class__.__name__}\n")
+
+        else:
+            early_stopping_counter += 1
+
+        if use_early_stopping and early_stopping_counter >= patience:
+            print("Early stopping triggered")
+            break
 
     return model_path, path_to_tensorboard_run
 
