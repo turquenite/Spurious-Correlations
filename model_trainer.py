@@ -161,7 +161,7 @@ def train(
                     f.write(f"Description: {experiment_description}\n")
 
                 f.write(f"Timestamp: {timestamp}\n")
-                f.write(f"Epoch: {epoch_number + 1} / {num_epochs} (Best Model)\n")
+                f.write(f"Epoch: {epoch_number} / {num_epochs} (Best Model)\n")
 
                 for desc, value in evaluation_metrics["Loss"].items():
                     f.write(f"Validation Loss {desc}: {value:.4f}\n")
