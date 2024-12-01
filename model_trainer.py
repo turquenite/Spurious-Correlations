@@ -19,6 +19,7 @@ def train(
     train_loader: DataLoader,
     optimizer_type=torch.optim.Adam,
     lr: float = 0.001,
+    weight_decay: float = 0,
     loss_function=torch.nn.CrossEntropyLoss(),
     experiment_description: str | None = None,
 ) -> tuple[str, str]:
@@ -31,6 +32,7 @@ def train(
         train_loader (DataLoader): DataLoader for train set.
         optimizer_type (_type_, optional): Optimizer used during training. Defaults to torch.optim.Adam.
         lr (float, optional): Learning rate for the optimizer. Defaults to 0.001.
+        weight_decay (float, optional): Weight decay (L2 penalty) for the optimizer. Defaults to 0.
         loss_function (_type_, optional): Loss function. Defaults to torch.nn.CrossEntropyLoss().
         experiment_description: str|None: Short experiment description used for saving and logging if not None.
 
@@ -49,7 +51,7 @@ def train(
 
     writer = SummaryWriter(tensorboard_log_dir_path)
 
-    optimizer = optimizer_type(model.parameters(), lr)
+    optimizer = optimizer_type(model.parameters(), lr, weight_decay=weight_decay)
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = model.to(device)
@@ -183,6 +185,7 @@ def deep_feature_reweighting(
     train_loader: DataLoader,
     optimizer_type=torch.optim.Adam,
     lr: float = 0.001,
+    weight_decay: float = 0,
     loss_function=torch.nn.CrossEntropyLoss(),
 ) -> tuple[str, str]:
     """Apply DFR to an already pretrained model by retraining the last layer.
@@ -196,6 +199,7 @@ def deep_feature_reweighting(
         train_loader (DataLoader): DataLoader for train set.
         optimizer_type (_type_, optional): Optimizer used during training. Defaults to torch.optim.Adam.
         lr (float, optional): Learning rate for the optimizer. Defaults to 0.001.
+        weight_decay (float, optional): Weight decay (L2 penalty) for the optimizer. Defaults to 0.
         loss_function (_type_, optional): Loss function. Defaults to torch.nn.CrossEntropyLoss().
 
     Returns:
@@ -217,7 +221,9 @@ def deep_feature_reweighting(
 
     # Define the optimizer with only the last layers parameters
     optimizer = optimizer_type(
-        filter(lambda p: p.requires_grad, model.parameters()), lr
+        filter(lambda p: p.requires_grad, model.parameters()),
+        lr,
+        weight_decay=weight_decay,
     )
 
     writer = SummaryWriter(path_to_tensorboard_run)
