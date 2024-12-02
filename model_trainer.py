@@ -48,7 +48,7 @@ def train(
     timestamp = datetime.now().strftime("%d_%m_%Y_%H%M")
 
     tensorboard_log_dir_path = (
-        f"runs/{timestamp}_{experiment_description}"
+        f"runs/{experiment_description}"
         if experiment_description
         else f"runs/{timestamp}"
     )
@@ -143,7 +143,7 @@ def train(
             early_stopping_counter = 0
 
             model_directory_path = (
-                f"models/{timestamp}_{experiment_description}"
+                f"models/{experiment_description}"
                 if experiment_description
                 else f"models/{timestamp}"
             )
