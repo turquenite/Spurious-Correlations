@@ -53,3 +53,4 @@ tensorboard --logdir=runs
 - `README.md`: Project documentation.
 - `sandbox.ipynb`: A notebook for experimenting with spurious features in datasets, training models, and applying DFR.
 - `spurious_features.py`: Functions for introducing spurious features into the MNIST images.
+- `experiments.py`: Framework for running experiments with with configurable datasets, models, and hyperparameters.
