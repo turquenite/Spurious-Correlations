@@ -326,7 +326,7 @@ def deep_feature_reweighting(
             }
         )
 
-        avg_vloss = evaluation_metrics["Accuracy"][list(validation_loaders.keys())[0]]
+        avg_vloss = evaluation_metrics["Loss"][list(validation_loaders.keys())[0]]
 
         # Save best model based on validation loss
         if avg_vloss < best_vloss:
