@@ -238,7 +238,7 @@ def deep_feature_reweighting(
 
     # Define the optimizer with only the last layers parameters
     optimizer = optimizer_type(
-        filter(lambda p: p.requires_grad, model.parameters()),
+        last_layer.parameters(),
         lr,
         weight_decay=weight_decay,
     )
