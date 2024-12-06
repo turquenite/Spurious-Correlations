@@ -236,6 +236,9 @@ def deep_feature_reweighting(
     for param in last_layer.parameters():
         param.requires_grad = True
 
+    # Reinitialize the parameters of the last layer
+    last_layer.reset_parameters()
+
     # Define the optimizer with only the last layers parameters
     optimizer = optimizer_type(
         last_layer.parameters(),
