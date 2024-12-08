@@ -22,7 +22,10 @@ class Orientation(Enum):
 
 
 def spurious_square(
-    image: torch.tensor, pos: Position = Position.LEFT_TOP, size: int = 3
+    image: torch.tensor,
+    pos: Position = Position.LEFT_TOP,
+    size: int = 3,
+    only_spurious: bool = False,
 ) -> torch.tensor:
     """Introduces a spurious square in a given image.
 
@@ -30,6 +33,7 @@ def spurious_square(
         image (torch.tensor): Image in which spurious square should be embedded.
         pos (Position, optional): Position where the square should occur. Defaults to Position.LEFT_TOP.
         size (int, optional): Size of the square. Defaults to 3.
+        only_spurious (bool, optional): If true, an image with only the spurious features is returned.
 
     Raises:
         ValueError: Given an an invalid Position.
@@ -37,6 +41,9 @@ def spurious_square(
     Returns:
         torch.tensor: Image with embedded spurious square.
     """
+    if only_spurious:
+        image = torch.zeros_like(image)
+
     _, height, width = image.shape
     match pos:
         case Position.LEFT_TOP:
@@ -61,6 +68,7 @@ def spurious_lines(
     image: torch.tensor,
     orientation: Orientation = Orientation.VERTICAL,
     distance: int = 7,
+    only_spurious: bool = False,
 ) -> torch.tensor:
     """Introduces spurious lines in a given image.
 
@@ -68,6 +76,8 @@ def spurious_lines(
         image (torch.tensor): Image in which spurious square should be embedded.
         orientation (Orientation, optional): Orientation in which the spurious lines should occur (horizontal or vertical). Defaults to Orientation.VERTICAL.
         distance (int, optional): Distance between spurious lines. Defaults to 7.
+        only_spurious (bool, optional): If true, an image with only the spurious features is returned.
+
 
     Raises:
         ValueError: Given an invalid orientation.
@@ -75,6 +85,9 @@ def spurious_lines(
     Returns:
         torch.tensor: Image with embedded spurious lines.
     """
+    if only_spurious:
+        image = torch.zeros_like(image)
+
     _, height, width = image.shape
 
     digit_mask = (image > 0).int()
