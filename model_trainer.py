@@ -394,13 +394,12 @@ def _train_one_epoch(
     N = len(train_loader) // 2 - 1
 
     for i, data in enumerate(train_loader):
-        inputs, true_labels, encoded_labels, spurious = data
+        inputs, true_labels, encoded_labels, feature_descriptions = data
 
-        inputs, true_labels, encoded_labels, spurious = (
+        inputs, true_labels, encoded_labels = (
             inputs.to(device),
             true_labels.to(device),
             encoded_labels.to(device),
-            spurious.to(device),
         )
 
         # Set gradients to zero
@@ -412,10 +411,10 @@ def _train_one_epoch(
         # Get predicted labels
         _, predicted_labels = torch.max(outputs, 1)
 
-        for pred, encoded_label, true_label, spur in zip(
-            predicted_labels, encoded_labels, true_labels, spurious
+        for pred, encoded_label, true_label, desc in zip(
+            predicted_labels, encoded_labels, true_labels, feature_descriptions
         ):
-            key = f"{true_label} - {'spurious' if spur else 'not spurious'}"
+            key = f"{true_label} - {desc}"
 
             if pred.item() == encoded_label.item():
                 num_correct_predictions[key] += 1
@@ -494,7 +493,7 @@ def _evaluate_model(
     metrics = defaultdict(dict)
     all_group_accuracies = dict()
 
-    for describtion, dataloader in dataloaders.items():
+    for dataset_describtion, dataloader in dataloaders.items():
         running_vloss = 0.0
         num_predictions = defaultdict(int)
         num_correct_predictions = defaultdict(int)
@@ -502,12 +501,11 @@ def _evaluate_model(
         # Disable gradient computation
         with torch.no_grad():
             for i, vdata in enumerate(dataloader):
-                vinputs, vtrue_labels, vencoded_labels, vspurious = vdata
-                vinputs, vtrue_labels, vencoded_labels, vspurious = (
+                vinputs, vtrue_labels, vencoded_labels, feature_descriptions = vdata
+                vinputs, vtrue_labels, vencoded_labels = (
                     vinputs.to(device),
                     vtrue_labels.to(device),
                     vencoded_labels.to(device),
-                    vspurious.to(device),
                 )
                 voutputs = model(vinputs)
                 vloss = loss_function(voutputs, vencoded_labels)
@@ -515,10 +513,13 @@ def _evaluate_model(
 
                 _, predicted_labels = torch.max(voutputs, 1)
 
-                for pred, encoded_label, true_label, spur in zip(
-                    predicted_labels, vencoded_labels, vtrue_labels, vspurious
+                for pred, encoded_label, true_label, desc in zip(
+                    predicted_labels,
+                    vencoded_labels,
+                    vtrue_labels,
+                    feature_descriptions,
                 ):
-                    key = f"{true_label} - {'spurious' if spur else 'not spurious'}"
+                    key = f"{true_label} - {desc}"
 
                     if pred.item() == encoded_label.item():
                         num_correct_predictions[key] += 1
@@ -531,7 +532,7 @@ def _evaluate_model(
             for group in num_predictions
         }
         avg_worst_group_vaccuracy = min(group_vaccuracies.values())
-        all_group_accuracies[describtion] = group_vaccuracies
+        all_group_accuracies[dataset_describtion] = group_vaccuracies
 
         total_correct = sum(num_correct_predictions.values())
         total_predictions = sum(num_predictions.values())
@@ -539,9 +540,9 @@ def _evaluate_model(
             total_correct / total_predictions if total_predictions > 0 else 0
         )
 
-        metrics["Loss"][describtion] = avg_vloss
-        metrics["Accuracy"][describtion] = avg_vaccuracy
-        metrics["Worst_group_accuracy"][describtion] = avg_worst_group_vaccuracy
+        metrics["Loss"][dataset_describtion] = avg_vloss
+        metrics["Accuracy"][dataset_describtion] = avg_vaccuracy
+        metrics["Worst_group_accuracy"][dataset_describtion] = avg_worst_group_vaccuracy
 
     # Log metrics to TensorBoard
     writer.add_scalars(
