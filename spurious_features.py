@@ -109,3 +109,29 @@ def spurious_lines(
             raise ValueError("Invalid Orientation")
 
     return image
+
+
+class SpuriousFeature:
+    """Class for creating spurious features."""
+
+    def __init__(self, function: callable, description: str, **kwargs):
+        """Initialize a spurious feature with a given function.
+
+        Args:
+            function (callable): A function which introduces a spurious feature.
+            description (str): Short description concerning the spurious feature.
+            **kwargs: Are passed to the given spurious function.
+        """
+        self.function = lambda img: function(img, **kwargs)
+        self.description = description
+
+    def apply(self, img: torch.tensor) -> torch.tensor:
+        """Apply the spurious function to a given image.
+
+        Args:
+            img (torch.tensor): Image to which the spurious feature should be applied.
+
+        Returns:
+            torch.tensor: Image with embedded spurious feature.
+        """
+        return self.function(img)
