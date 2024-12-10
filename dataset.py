@@ -7,6 +7,8 @@ import torch
 from torch.utils.data import Dataset
 from torchvision import datasets, transforms
 
+from spurious_features import SpuriousFeature
+
 
 class MNISTDataset(Dataset):
     """Dataset class for MNIST-number dataset."""
@@ -15,7 +17,8 @@ class MNISTDataset(Dataset):
         self,
         train: bool = True,
         labels: None | list[int] = None,
-        spurious_features: None | dict[int, callable] = None,
+        main_spurious_features: None | SpuriousFeature = None,
+        minority_spurious_features: None | SpuriousFeature = None,
         probabilities: None | dict[int, float] = None,
         random_seed: int = None,
     ):
@@ -24,16 +27,20 @@ class MNISTDataset(Dataset):
         Args:
             train (bool, optional): True if this Dataset is used for training, else False. Defaults to True.
             labels (None | list[int], optional): Labels that should be used in the dataset. Should be a list of integers (corresponding labels are then used) or None (all labels are used). Defaults to None.
-            spurious_features (None | dict[int, callable], optional): Contains all spurious functions that should be applied to a given label (key in dictionary). Defaults to None.
-            probabilities (None | dict[int, float], optional): Contains the probabilities with which all specified spurious functions are applied to the corresponding label. Defaults to None.
+            main_spurious_features (None | dict[int, SpuriousFeature], optional): Contains all spurious features that should be applied to a given label (key in dictionary) with a given probability. Defaults to None.
+            minority_spurious_features (None | dict[int, SpuriousFeature], optional): Contains all spurious features that should be applied all samples of a given label (key in dict), where no main_spurious_feature was applied. Defaults to None.
+            probabilities (None | dict[int, float], optional): Contains the probabilities with which all specified spurious features in main_spurious_features are applied to the corresponding label. Defaults to None.
             random_seed (int, optional): Seed for random initialization. Defaults to None.
 
         Raises:
             ValueError: If a specified spurious function has no corresponding probability.
         """
         self.train = train
-        self.spurious_features = spurious_features
-        self.spurious_indices = {}
+        self.main_spurious_features = main_spurious_features
+        self.minority_spurious_features = minority_spurious_features
+        self.main_spurious_indices = {}
+        self.minority_spurious_indices = {}
+
         self.transform = transforms.Compose(
             [
                 transforms.ToTensor(),
@@ -61,16 +68,17 @@ class MNISTDataset(Dataset):
             }
             data = [(img, label) for img, label in full_dataset]
 
-        if spurious_features:
-            missing_keys = set(spurious_features.keys()) - set(probabilities.keys())
+        if main_spurious_features:
+            missing_keys = set(main_spurious_features.keys()) - set(
+                probabilities.keys()
+            )
 
             if missing_keys:
                 raise ValueError(
                     f"The probabilities for the following keys are missing {missing_keys}."
                 )
 
-            for spurious_label in spurious_features:
-                spurious_function = spurious_features[spurious_label]
+            for spurious_label, spurious_feature in main_spurious_features.items():
                 probability = probabilities[spurious_label]
                 indices = [
                     i for i, (_, label) in enumerate(data) if label == spurious_label
@@ -79,10 +87,28 @@ class MNISTDataset(Dataset):
                 num_choices = int(len(indices) * probability)
                 selected_indices = random.sample(indices, k=num_choices)
 
-                self.spurious_indices[spurious_label] = selected_indices
+                self.main_spurious_indices[spurious_label] = selected_indices
 
                 for i in selected_indices:
-                    data[i] = (spurious_function(data[i][0]), data[i][1])
+                    data[i] = (spurious_feature.apply(data[i][0]), data[i][1])
+
+                if (
+                    minority_spurious_features
+                    and spurious_label in minority_spurious_features
+                ):
+                    minority_spurious_feature = minority_spurious_features[
+                        spurious_label
+                    ]
+
+                    self.minority_spurious_indices[spurious_label] = list(
+                        set(indices) - set(selected_indices)
+                    )
+
+                    for i in self.minority_spurious_indices[spurious_label]:
+                        data[i] = (
+                            minority_spurious_feature.apply(data[i][0]),
+                            data[i][1],
+                        )
 
         self.data = data
 
@@ -101,18 +127,33 @@ class MNISTDataset(Dataset):
             idx int: Index.
 
         Returns:
-            tuple[torch.Tensor, int, int, bool]: Returns the data as tensor, the true and encoded label as integer and whether this data item includes a spurious feature.
+            tuple[torch.Tensor, int, int, str]: Returns the data as tensor, the true and encoded label as integer and a short description whether this data item includes a spurious feature.
         """
         data, true_label = self.data[idx]
         encoded_label = self.label_encoding[true_label]
+
+        if (
+            self.main_spurious_features
+            and true_label in self.main_spurious_features
+            and idx in self.main_spurious_indices[true_label]
+        ):
+            description = self.main_spurious_features[true_label].description
+
+        elif (
+            self.minority_spurious_features
+            and true_label in self.minority_spurious_features
+            and idx in self.minority_spurious_indices[true_label]
+        ):
+            description = self.minority_spurious_features[true_label].description
+
+        else:
+            description = "Not Spurious"
+
         return (
             data,
             true_label,
             encoded_label,
-            True
-            if true_label in self.spurious_indices
-            and idx in self.spurious_indices[true_label]
-            else False,
+            description,
         )
 
     def view_item(self, idx):
