@@ -8,25 +8,31 @@ from torch.utils.data import DataLoader, Dataset
 from dataset import MNISTDataset
 from model_trainer import deep_feature_reweighting, train
 from models import SimpleModel
+from spurious_features import SpuriousFeature
 
 
 def run_experiments(
     experiment_title: str,
     labels: list[int] | None,
-    spurious_features: dict[int:callable],
-    spurious_probabilities: dict[int:float],
-    opposite_spurious_features: dict[int:callable],
-    opposite_spurious_probabilities: dict[int:float],
-    experiment_config: dict[str : list[any]],
+    main_spurious_features: dict[int, SpuriousFeature],
+    minority_spurious_features: dict[int, SpuriousFeature],
+    spurious_probabilities: dict[int, float],
+    opposite_main_spurious_features: dict[int, SpuriousFeature],
+    opposite_minority_spurious_features: dict[int, SpuriousFeature],
+    opposite_spurious_probabilities: dict[int, float],
+    dfr_main_spurious_features: dict[int, SpuriousFeature],
+    dfr_minority_spurious_features: dict[int, SpuriousFeature],
+    dfr_probabilities: dict[int, float],
+    experiment_config: dict[str, list[any]],
 ) -> list[str]:
     """Run multiple experiments where a model is trained on a spurious dataset and then retrained on an unbiased dataset with a range of given hyperparameters.
 
     Args:
         experiment_title (str): Title of experiment.
         labels (list[int] | None): Labels Labels that should be used in the dataset. Should be a list of integers (corresponding labels are then used) or None (all labels are used).
-        spurious_features dict[int: callable]: Contains all spurious functions that should be applied to a given label (key in dictionary) in the train and a validation dataset.
+        spurious_features dict[int: SpuriousFeature]: Contains all spurious functions that should be applied to a given label (key in dictionary) in the train and a validation dataset.
         spurious_probabilities dict[int: float]: Contains the probabilities with which all specified spurious functions are applied to the corresponding label in the train and a validation dataset.
-        opposite_spurious_features dict[int: callable]: Contains all spurious functions that should be applied to a given label (key in dictionary) in the opposite validation dataset.
+        opposite_spurious_features dict[int: SpuriousFeature]: Contains all spurious functions that should be applied to a given label (key in dictionary) in the opposite validation dataset.
         opposite_spurious_probabilities dict[int: float]: Contains the probabilities with which all specified spurious functions are applied to the corresponding label in the opposite validation dataset.
         experiment_config (dict[str: list[any]]):
             A dictionary containing all hyperparameter values that should be tried in an experiment. The hyperparameter is the key and the value a list of all values.
@@ -56,21 +62,24 @@ def run_experiments(
     train_dataset = MNISTDataset(
         train=True,
         labels=labels,
-        spurious_features=spurious_features,
+        main_spurious_features=main_spurious_features,
+        minority_spurious_features=minority_spurious_features,
         probabilities=spurious_probabilities,
     )
 
     validation_spurious_dataset = MNISTDataset(
         train=False,
         labels=labels,
-        spurious_features=spurious_features,
+        main_spurious_features=main_spurious_features,
+        minority_spurious_features=minority_spurious_features,
         probabilities=spurious_probabilities,
     )
 
     validation_opposite_spurious_dataset = MNISTDataset(
         train=False,
         labels=labels,
-        spurious_features=opposite_spurious_features,
+        main_spurious_features=opposite_main_spurious_features,
+        minority_spurious_features=opposite_minority_spurious_features,
         probabilities=opposite_spurious_probabilities,
     )
 
@@ -79,9 +88,21 @@ def run_experiments(
         labels=labels,
     )
 
-    dfr_train_dataset = MNISTDataset(train=True, labels=labels)
+    validation_only_spurious = MNISTDataset(
+        train=False,
+        labels=labels,
+        main_spurious_features=main_spurious_features,
+        minority_spurious_features=minority_spurious_features,
+        probabilities={label: 1 for label in labels},
+    )
 
-    # TODO: Add dataset with only spurious features
+    dfr_train_dataset = MNISTDataset(
+        train=True,
+        labels=labels,
+        main_spurious_features=dfr_main_spurious_features,
+        minority_spurious_features=dfr_minority_spurious_features,
+        probabilities=dfr_probabilities,
+    )
 
     tensorboard_logs = list()
 
@@ -107,6 +128,7 @@ def run_experiments(
                 spurious_eval_dataset=validation_spurious_dataset,
                 non_spurious_eval_dataset=validation_non_spurious_dataset,
                 opposite_spurious_dataset=validation_opposite_spurious_dataset,
+                only_spurious_dataset=validation_only_spurious,
                 dfr_train_dataset=dfr_train_dataset,
                 hyperparam_description=desc,
                 experiment_title=experiment_title,
@@ -122,6 +144,7 @@ def run_single_experiment(
     spurious_eval_dataset: Dataset,
     non_spurious_eval_dataset: Dataset,
     opposite_spurious_dataset: Dataset,
+    only_spurious_dataset: Dataset,
     dfr_train_dataset: Dataset,
     batch_size: int,
     model_architecture: torch.nn.Module,
@@ -143,6 +166,7 @@ def run_single_experiment(
         spurious_eval_dataset (Dataset): Evaluation dataset (includes same spurious features as train_dataset).
         non_spurious_eval_dataset (Dataset): Evaluation dataset (without any spurious features).
         opposite_spurious_dataset (Dataset): Evaluation dataset (includes "reversed" or "opposite" spurious features).
+        only_spurious_eval_dataset (Dataset): Evaluation dataset (with only spurious features).
         dfr_train_dataset (Dataset): Unbiased train dataset for retraining the model.
         batch_size (int): Batch size.
         model_architecture (torch.nn.Module): Architecture or model class.
@@ -173,6 +197,9 @@ def run_single_experiment(
         ),
         "validation_opposite_spurious": DataLoader(
             opposite_spurious_dataset, batch_size=batch_size, shuffle=False
+        ),
+        "validation_only_spurious": DataLoader(
+            only_spurious_dataset, batch_size=batch_size, shuffle=False
         ),
     }
 
@@ -210,13 +237,13 @@ def run_single_experiment(
     return tensorboard_path
 
 
-# Standard configuration of hyperparameters. Used hyperparameter is not specified.
+# Standard configuration of hyperparameters. Used if hyperparameter is not specified.
 _base_config = {
     "latent_size": 128,
     "learning_rate": 0.001,
     "weight_decay": 0.01,
     "batch_size": 64,
-    "optimizer_type": torch.optim.SGD,
+    "optimizer_type": torch.optim.Adam,
     "num_epochs": 15,
     "num_dfr_epochs": 5,
     "model_architecture": SimpleModel,
