@@ -4,6 +4,7 @@ import random
 
 import matplotlib.pyplot as plt
 import torch
+from torch.nn.functional import interpolate
 from torch.utils.data import Dataset
 from torchvision import datasets, transforms
 
@@ -171,3 +172,81 @@ class MNISTDataset(Dataset):
         plt.title(f"Label: {label}")
         plt.axis("off")
         plt.show()
+
+    def gradcam(self, model: torch.nn.Module, idx: int, target_layer: torch.nn.Module):
+        """Visualize the importance of each pixel for one data-sample in a target_layer.
+
+        Args:
+            model (torch.nn.Module): Model to evaluate.
+            idx (int): Index of data sample.
+            target_layer (torch.nn.Module): Layer of model used for computing gradients.
+        """
+        model.cpu().eval()
+
+        data, true_label = self.data[idx]
+        data = data.unsqueeze(0).requires_grad_()
+
+        activations = []
+        gradients = []
+
+        # Forward hook for activations
+        def forward_hook(module, input, output):
+            activations.append(output)
+
+        # Backward hook for gradients
+        def full_backward_hook(module, grad_input, grad_output):
+            gradients.append(grad_output[0])
+
+        # Register hooks
+        forward_handle = target_layer.register_forward_hook(forward_hook)
+        backward_handle = target_layer.register_full_backward_hook(full_backward_hook)
+
+        # Forward pass
+        output = model(data)
+        pred_label = output.argmax(dim=1).item()
+
+        # Backward pass
+        model.zero_grad()
+        one_hot_output = torch.zeros_like(output)
+        one_hot_output[0, pred_label] = 1
+        output.backward(gradient=one_hot_output)
+
+        gradients = gradients[0].cpu().detach()
+        activations = activations[0].cpu().detach()
+
+        weights = gradients.mean(dim=(2, 3), keepdim=True)
+        gradcam_map = (weights * activations).sum(dim=1).squeeze()
+
+        # Normalization
+        gradcam_map = gradcam_map.clamp(min=0)
+        gradcam_map = (gradcam_map - gradcam_map.min()) / (
+            gradcam_map.max() - gradcam_map.min()
+        )
+        gradcam_map = (
+            interpolate(
+                gradcam_map.unsqueeze(0).unsqueeze(0),
+                size=data.shape[2:],
+                mode="bilinear",
+            )
+            .squeeze()
+            .numpy()
+        )
+
+        original_image = data.squeeze().cpu().detach().numpy()
+
+        plt.figure(figsize=(8, 4))
+        plt.subplot(1, 2, 1)
+        plt.title(f"Original Image (Label: {true_label})")
+        plt.imshow(original_image, cmap="gray")
+        plt.axis("off")
+
+        plt.subplot(1, 2, 2)
+        plt.title(f"Grad-CAM Heatmap (Target Label: {pred_label})")
+        plt.imshow(original_image, cmap="gray", alpha=0.5)
+        plt.imshow(gradcam_map, cmap="jet", alpha=0.5)
+        plt.axis("off")
+
+        plt.show()
+
+        forward_handle.remove()
+        backward_handle.remove()
