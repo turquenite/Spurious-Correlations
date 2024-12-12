@@ -24,6 +24,7 @@ def train(
     use_early_stopping: bool = True,
     patience: int = 5,
     experiment_description: str | None = None,
+    seed: int | None = None,
 ) -> tuple[str, str]:
     """Trains given model for num_epochs.
 
@@ -39,12 +40,19 @@ def train(
         use_early_stopping (bool, optional): Whether to use (True) or not use (False) early stopping. Defaults to True.
         patience (int, optional): Number of epochs to wait for improvement before triggering early stopping. Defaults to 5.
         experiment_description: str|None: Short experiment description used for saving and logging if not None.
+        seed: (int, optional): Random seed. Defaults to None.
 
     Returns:
         tuple: (str, str) containing:
             - Path to the saved model with the best validation loss.
             - Path to the TensorBoard log directory.
     """
+    if seed:
+        torch.manual_seed(seed)
+
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+
     timestamp = datetime.now().strftime("%d_%m_%Y_%H%M")
 
     tensorboard_log_dir_path = (
@@ -202,6 +210,7 @@ def deep_feature_reweighting(
     loss_function=torch.nn.CrossEntropyLoss(),
     use_early_stopping: bool = True,
     patience: int = 5,
+    seed: int | None = None,
 ) -> tuple[str, str]:
     """Apply DFR to an already pretrained model by retraining the last layer.
 
@@ -218,12 +227,19 @@ def deep_feature_reweighting(
         loss_function (_type_, optional): Loss function. Defaults to torch.nn.CrossEntropyLoss().
         use_early_stopping (bool, optional): Whether to use (True) or not use (False) early stopping. Defaults to True.
         patience (int, optional): Number of epochs to wait for improvement before triggering early stopping. Defaults to 5.
+        seed (int, optional): Random seed. Defaults to None.
 
     Returns:
         tuple: (str, str) containing:
             - Path to the best retrained model.
             - Path to the TensorBoard log directory.
     """
+    if seed:
+        torch.manual_seed(seed)
+
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+
     # Load pre-trained model state
     model.load_state_dict(torch.load(path_to_model, weights_only=True))
 
