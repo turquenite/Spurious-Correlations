@@ -23,6 +23,7 @@ def run_experiments(
     dfr_main_spurious_features: dict[int, SpuriousFeature],
     dfr_minority_spurious_features: dict[int, SpuriousFeature],
     dfr_probabilities: dict[int, float],
+    seed: int,
     experiment_config: dict[str, list[any]],
 ) -> list[str]:
     """Run multiple experiments where a model is trained on a spurious dataset and then retrained on an unbiased dataset with a range of given hyperparameters.
@@ -34,6 +35,7 @@ def run_experiments(
         spurious_probabilities dict[int: float]: Contains the probabilities with which all specified spurious functions are applied to the corresponding label in the train and a validation dataset.
         opposite_spurious_features dict[int: SpuriousFeature]: Contains all spurious functions that should be applied to a given label (key in dictionary) in the opposite validation dataset.
         opposite_spurious_probabilities dict[int: float]: Contains the probabilities with which all specified spurious functions are applied to the corresponding label in the opposite validation dataset.
+        seed: (int): Random seed.
         experiment_config (dict[str: list[any]]):
             A dictionary containing all hyperparameter values that should be tried in an experiment. The hyperparameter is the key and the value a list of all values.
             The following keys are allowed:
@@ -65,6 +67,7 @@ def run_experiments(
         main_spurious_features=main_spurious_features,
         minority_spurious_features=minority_spurious_features,
         probabilities=spurious_probabilities,
+        random_seed=seed,
     )
 
     validation_spurious_dataset = MNISTDataset(
@@ -73,6 +76,7 @@ def run_experiments(
         main_spurious_features=main_spurious_features,
         minority_spurious_features=minority_spurious_features,
         probabilities=spurious_probabilities,
+        random_seed=seed,
     )
 
     validation_opposite_spurious_dataset = MNISTDataset(
@@ -81,11 +85,11 @@ def run_experiments(
         main_spurious_features=opposite_main_spurious_features,
         minority_spurious_features=opposite_minority_spurious_features,
         probabilities=opposite_spurious_probabilities,
+        random_seed=seed,
     )
 
     validation_non_spurious_dataset = MNISTDataset(
-        train=False,
-        labels=labels,
+        train=False, labels=labels, random_seed=seed
     )
 
     validation_only_spurious = MNISTDataset(
@@ -94,6 +98,7 @@ def run_experiments(
         main_spurious_features=main_spurious_features,
         minority_spurious_features=minority_spurious_features,
         probabilities={label: 1 for label in labels},
+        random_seed=seed,
     )
 
     dfr_train_dataset = MNISTDataset(
@@ -102,6 +107,7 @@ def run_experiments(
         main_spurious_features=dfr_main_spurious_features,
         minority_spurious_features=dfr_minority_spurious_features,
         probabilities=dfr_probabilities,
+        random_seed=seed,
     )
 
     tensorboard_logs = list()
@@ -132,6 +138,7 @@ def run_experiments(
                 dfr_train_dataset=dfr_train_dataset,
                 hyperparam_description=desc,
                 experiment_title=experiment_title,
+                seed=seed,
                 **config,
             )
         )
@@ -157,6 +164,7 @@ def run_single_experiment(
     use_early_stopping: bool,
     patience: int,
     hyperparam_description: str,
+    seed: int,
     experiment_title: str,
 ) -> str:
     """Run a single experiment where a model is trained on a spurious dataset and then retrained on an unbiased dataset.
@@ -179,6 +187,7 @@ def run_single_experiment(
         use_early_stopping (bool): Whether to use (True) or not use (False) early stopping.
         patience (int): Number of epochs to wait for improvement before triggering early stopping.
         hyperparam_description (str): A short description of all hyperparameters that were manually set.
+        seed (int): Random seed.
         experiment_title (str): Title of the experiment.
 
     Returns:
@@ -216,6 +225,7 @@ def run_single_experiment(
         weight_decay=weight_decay,
         use_early_stopping=use_early_stopping,
         patience=patience,
+        seed=seed,
     )
 
     dfr_loader = DataLoader(dfr_train_dataset, batch_size=batch_size, shuffle=True)
@@ -232,6 +242,7 @@ def run_single_experiment(
         weight_decay=weight_decay,
         use_early_stopping=use_early_stopping,
         patience=patience,
+        seed=seed,
     )
 
     return tensorboard_path
@@ -249,4 +260,5 @@ _base_config = {
     "model_architecture": SimpleModel,
     "use_early_stopping": True,
     "patience": 5,
+    "seed": 12,
 }
