@@ -69,6 +69,8 @@ class MNISTDataset(Dataset):
             }
             data = [(img, label) for img, label in full_dataset]
 
+        self.reverse_label_encoding = {v: k for k, v in self.label_encoding.items()}
+
         if main_spurious_features:
             missing_keys = set(main_spurious_features.keys()) - set(
                 probabilities.keys()
@@ -241,7 +243,9 @@ class MNISTDataset(Dataset):
         plt.axis("off")
 
         plt.subplot(1, 2, 2)
-        plt.title(f"Grad-CAM Heatmap (Target Label: {pred_label})")
+        plt.title(
+            f"Grad-CAM Heatmap (Predicted Label: {self.reverse_label_encoding[pred_label]})"
+        )
         plt.imshow(original_image, cmap="gray", alpha=0.5)
         plt.imshow(gradcam_map, cmap="jet", alpha=0.5)
         plt.axis("off")
