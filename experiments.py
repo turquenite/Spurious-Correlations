@@ -146,6 +146,126 @@ def run_experiments(
     return tensorboard_logs
 
 
+def run_experiment_with_different_seeds(
+    experiment_title: str,
+    labels: list[int] | None,
+    main_spurious_features: dict[int, SpuriousFeature],
+    minority_spurious_features: dict[int, SpuriousFeature],
+    spurious_probabilities: dict[int, float],
+    opposite_main_spurious_features: dict[int, SpuriousFeature],
+    opposite_minority_spurious_features: dict[int, SpuriousFeature],
+    opposite_spurious_probabilities: dict[int, float],
+    dfr_main_spurious_features: dict[int, SpuriousFeature],
+    dfr_minority_spurious_features: dict[int, SpuriousFeature],
+    dfr_probabilities: dict[int, float],
+    seeds: list[int],
+    fixed_config: dict[str, any],
+) -> dict[int, str]:
+    """
+    Run multiple experiments with the same hyperparameters but different random seeds.
+
+    Args:
+        experiment_title (str): Title of experiment.
+        labels (list[int] | None): Labels used in the dataset.
+        main_spurious_features (dict[int, SpuriousFeature]): Spurious features for the main dataset.
+        minority_spurious_features (dict[int, SpuriousFeature]): Spurious features for the minority dataset.
+        spurious_probabilities (dict[int, float]): Probabilities of applying spurious features for main datasets.
+        opposite_main_spurious_features (dict[int, SpuriousFeature]): Spurious features for opposite main datasets.
+        opposite_minority_spurious_features (dict[int, SpuriousFeature]): Spurious features for opposite minority datasets.
+        opposite_spurious_probabilities (dict[int, float]): Probabilities for opposite datasets.
+        dfr_main_spurious_features (dict[int, SpuriousFeature]): DFR-specific main spurious features.
+        dfr_minority_spurious_features (dict[int, SpuriousFeature]): DFR-specific minority spurious features.
+        dfr_probabilities (dict[int, float]): DFR-specific probabilities.
+        seeds (list[int]): List of random seeds for the experiments.
+        fixed_config (dict[str, any]): A fixed set of hyperparameters for all experiments.
+
+    Returns:
+        dict[int, str]: A dictionary mapping each seed to its TensorBoard log path.
+    """
+    invalid_keys = set(fixed_config.keys()) - set(_base_config.keys())
+
+    if invalid_keys:
+        raise ValueError(f"The following keys are invalid: {invalid_keys}.")
+
+    results = {}
+
+    for seed in seeds:
+        # Update datasets with the new seed
+        train_dataset = MNISTDataset(
+            train=True,
+            labels=labels,
+            main_spurious_features=main_spurious_features,
+            minority_spurious_features=minority_spurious_features,
+            probabilities=spurious_probabilities,
+            random_seed=seed,
+        )
+
+        validation_spurious_dataset = MNISTDataset(
+            train=False,
+            labels=labels,
+            main_spurious_features=main_spurious_features,
+            minority_spurious_features=minority_spurious_features,
+            probabilities=spurious_probabilities,
+            random_seed=seed,
+        )
+
+        validation_opposite_spurious_dataset = MNISTDataset(
+            train=False,
+            labels=labels,
+            main_spurious_features=opposite_main_spurious_features,
+            minority_spurious_features=opposite_minority_spurious_features,
+            probabilities=opposite_spurious_probabilities,
+            random_seed=seed,
+        )
+
+        validation_non_spurious_dataset = MNISTDataset(
+            train=False, labels=labels, random_seed=seed
+        )
+
+        validation_only_spurious = MNISTDataset(
+            train=False,
+            labels=labels,
+            main_spurious_features=main_spurious_features,
+            minority_spurious_features=minority_spurious_features,
+            probabilities={label: 1 for label in labels},
+            random_seed=seed,
+        )
+
+        dfr_train_dataset = MNISTDataset(
+            train=True,
+            labels=labels,
+            main_spurious_features=dfr_main_spurious_features,
+            minority_spurious_features=dfr_minority_spurious_features,
+            probabilities=dfr_probabilities,
+            random_seed=seed,
+        )
+
+        for hyperparam in fixed_config.keys():
+            config = _base_config.copy()
+            config[hyperparam] = fixed_config[hyperparam]
+
+        desc = f"Seed={seed}, " + ", ".join(
+            [f"{param}={value}" for param, value in fixed_config.items()]
+        )
+
+        tensorboard_log = run_single_experiment(
+            train_dataset=train_dataset,
+            spurious_eval_dataset=validation_spurious_dataset,
+            non_spurious_eval_dataset=validation_non_spurious_dataset,
+            opposite_spurious_dataset=validation_opposite_spurious_dataset,
+            only_spurious_dataset=validation_only_spurious,
+            dfr_train_dataset=dfr_train_dataset,
+            hyperparam_description=desc,
+            experiment_title=experiment_title,
+            seed=seed,
+            **config,
+        )
+
+        results[seed] = tensorboard_log
+
+    return results
+
+
 def run_single_experiment(
     train_dataset: Dataset,
     spurious_eval_dataset: Dataset,
@@ -260,5 +380,4 @@ _base_config = {
     "model_architecture": SimpleModel,
     "use_early_stopping": True,
     "patience": 5,
-    "seed": 12,
 }
